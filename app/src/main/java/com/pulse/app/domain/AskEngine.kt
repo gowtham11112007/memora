@@ -6,6 +6,8 @@ import java.time.ZoneId
 data class AskRecord(val id: Long, val amountPaise: Long, val merchant: String?, val type: RecordType, val at: Long)
 data class AskReminder(val id: Long, val title: String, val dueAt: Long, val done: Boolean)
 
+data class AskMoney(val balance: BalanceView? = null, val budgetPaise: Long = 0)
+
 data class AskAnswer(
     val text: String,
     val sources: List<AskRecord> = emptyList(),
@@ -50,9 +52,12 @@ object AskEngine {
         today: LocalDate,
         zone: ZoneId,
         nowMillis: Long,
+        money: AskMoney = AskMoney(),
     ): AskAnswer {
         val q = question.lowercase().trim()
-        if (q.isEmpty() || adviceWords.containsMatchIn(q)) return notMine()
+        if (q.isEmpty()) return notMine()
+        ownMoneyFacts(q, records, rules, money, today, zone)?.let { return it }
+        if (adviceWords.containsMatchIn(q)) return notMine()
         if (asksAboutReminders(q)) return upcoming(reminders, nowMillis)
 
         val mine = has(q, *firstPerson)
@@ -99,6 +104,69 @@ object AskEngine {
         val total = formatRupees(matching.sumOf { it.amountPaise })
         val count = if (matching.size == 1) "1 payment" else "${matching.size} payments"
         return AskAnswer("You $verb $total$what ${period.label}, in $count.", matching.take(MAX_SOURCES))
+    }
+
+    /** Facts only this phone knows: balance, budget, subscriptions, top payees and the daily average. */
+    private fun ownMoneyFacts(
+        q: String,
+        records: List<AskRecord>,
+        rules: Map<String, Category>,
+        money: AskMoney,
+        today: LocalDate,
+        zone: ZoneId,
+    ): AskAnswer? {
+        if (Regex("""\b(how can|how do|should|tips?|advice|suggest|why)\b""").containsMatchIn(q)) return null
+        val mine = has(q, *firstPerson)
+        val items = records.map { MoneyItem(it.amountPaise, it.merchant, it.type, it.at) }
+        val monthStart = TimeRange.MONTH.startDate(today)
+        val spentThisMonth = records.filter {
+            it.type == RecordType.EXPENSE && it.at.toLocalDate(zone) >= monthStart
+        }
+        return when {
+            has(q, "balance") && (mine || has(q, "current", "total")) -> money.balance?.let {
+                AskAnswer("Your balance is ${formatRupees(it.paise)}. ${it.source}.")
+            } ?: AskAnswer("I don't know your balance yet. Tap Total balance on Home to set it, or turn on your SMS app.")
+
+            has(q, "budget") && (mine || has(q, "left", "remaining")) -> {
+                val spent = spentThisMonth.sumOf { it.amountPaise }
+                val left = money.budgetPaise - spent
+                when {
+                    money.budgetPaise <= 0 -> AskAnswer("You haven't set a monthly budget. Tap Monthly budget on Home to set one.")
+                    left >= 0 -> AskAnswer("You have ${formatRupees(left)} left of your ${formatRupees(money.budgetPaise)} budget this month.")
+                    else -> AskAnswer("You're ${formatRupees(-left)} over your ${formatRupees(money.budgetPaise)} budget this month.")
+                }
+            }
+
+            has(q, "subscription", "subscriptions") && (mine || has(q, "list", "show")) -> {
+                val found = Subscriptions.detect(items, today, zone)
+                if (found.isEmpty()) {
+                    AskAnswer("I haven't spotted any monthly subscriptions in your records yet.")
+                } else {
+                    AskAnswer(
+                        "These look like monthly subscriptions, based on repeating charges.",
+                        notes = found.map { "${it.merchant}: ${formatRupees(it.amountPaise)}" },
+                    )
+                }
+            }
+
+            q.contains("spend the most") || q.contains("spent the most") || q.contains("top merchant") || q.contains("paid the most") -> {
+                val top = spentThisMonth.filter { it.merchant != null }.groupBy { it.merchant!! }
+                    .mapValues { (_, list) -> list.sumOf { it.amountPaise } }
+                    .entries.sortedByDescending { it.value }.take(3)
+                if (top.isEmpty()) {
+                    AskAnswer("I found no payments this month in your records.")
+                } else {
+                    AskAnswer("Your top payees this month.", notes = top.map { "${it.key}: ${formatRupees(it.value)}" })
+                }
+            }
+
+            has(q, "average", "avg") && has(q, "spend", "spent", "spending", "day", "daily") && (mine || has(q, "daily")) -> {
+                val spent = spentThisMonth.sumOf { it.amountPaise }
+                AskAnswer("You've spent an average of ${formatRupees(spent / today.dayOfMonth)} a day this month.")
+            }
+
+            else -> null
+        }
     }
 
     /** A short line of month totals, with no merchants, for the AI, if the user turned that on. */

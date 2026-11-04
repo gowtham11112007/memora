@@ -20,7 +20,8 @@ Turn Demo mode off afterwards. While it's on, new real payments go into the samp
 
 **Ask Memora (60 seconds).** Tap the lime button.
 1. "How much did I spend on food this week?" The answer comes from the phone and shows its source records.
-2. "Remember that my passport is in the blue drawer", then "Find passport".
+2. "Remember that my passport is in the blue drawer", then "Where is my passport?"
+   Also good: "What's my balance?", "Do I have subscriptions?", "Where do I spend the most?"
 3. "Remind me to call mom tomorrow at 5 pm".
 4. If online: "Explain how UPI works". This one goes to Gemini.
 

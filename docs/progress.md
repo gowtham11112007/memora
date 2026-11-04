@@ -9,7 +9,8 @@
 - **Money:** total balance, deducted and received today, monthly budget.
 - **Email:** weekly totals through Resend, with a send-now button.
 - **Demo polish:** demo mode with a separate database, today's brief with insights, pause reading, haptics, README, demo script, accuracy test ready for real messages.
-- **Part of milestone 6:** delete all data, and a privacy summary.
+- **Latest round:** welcome screens, subscription finder, chat answers for balance, budget, top payees and daily average, note lookups, evening summary, budget alerts, records search and date headings, CSV export. None of this has run on a real phone yet.
+- **Part of milestone 6:** delete all data, pause reading, CSV export and a privacy summary.
 - **Interface:** redesigned from the best parts of all references (see design.md), with page transitions and motion. Notification reading and AI assistant have their own pages in Settings.
 
 ## Real-phone finding (Nothing 3a, Android 16)

@@ -1,6 +1,8 @@
 package com.pulse.app
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -44,7 +46,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.pulse.app.service.EveningBrief
 import com.pulse.app.ui.ask.AskScreen
+import com.pulse.app.ui.onboarding.OnboardingContent
 import com.pulse.app.ui.brain.BrainScreen
 import com.pulse.app.ui.calendar.CalendarScreen
 import com.pulse.app.ui.components.PulseNav
@@ -89,6 +93,32 @@ private fun PulseRoot() {
         ) {
             askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+        EveningBrief.apply(context.applicationContext)
+    }
+
+    val appPrefs = remember { context.getSharedPreferences("app", Context.MODE_PRIVATE) }
+    var welcomed by rememberSaveable { mutableStateOf(appPrefs.getBoolean("welcomed", false)) }
+    if (!welcomed) {
+        val finish = {
+            appPrefs.edit().putBoolean("welcomed", true).apply()
+            welcomed = true
+        }
+        OnboardingContent(
+            onTurnOnReading = {
+                finish()
+                route = Route.READING
+            },
+            onTrySample = {
+                finish()
+                (context.applicationContext as PulseApp).switchDemo(true)
+                context.startActivity(
+                    Intent(context, MainActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
+                )
+            },
+            onSkip = finish,
+        )
+        return
     }
 
     val back = {

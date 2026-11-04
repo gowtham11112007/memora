@@ -11,6 +11,7 @@ import com.pulse.app.data.MIGRATION_2_3
 import com.pulse.app.data.MIGRATION_3_4
 import com.pulse.app.data.MoneyPrefs
 import com.pulse.app.data.PulseDatabase
+import com.pulse.app.service.BudgetAlert
 import com.pulse.app.service.ReminderPrompt
 import com.pulse.app.service.ReminderScheduler
 import kotlinx.coroutines.CoroutineScope
@@ -34,6 +35,7 @@ class PulseGraph(val appContext: Context, val demo: Boolean = false) {
         onReminderDetected = { ReminderPrompt.show(appContext, it) },
         onBalanceSeen = moneyPrefs::setBank,
         isPaused = aiSettings::isPaused,
+        onRecordSaved = { BudgetAlert.check(this) },
     )
 }
 

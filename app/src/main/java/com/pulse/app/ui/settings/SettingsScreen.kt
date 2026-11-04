@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,7 +52,12 @@ import android.content.Intent
 import com.pulse.app.MainActivity
 import com.pulse.app.PulseApp
 import com.pulse.app.PulseGraph
+import com.pulse.app.domain.Category
+import com.pulse.app.domain.Exporter
+import com.pulse.app.domain.MoneyItem
 import com.pulse.app.domain.RecordType
+import com.pulse.app.service.EveningBrief
+import java.time.ZoneId
 import com.pulse.app.ui.components.ArrowChip
 import com.pulse.app.ui.components.bounceClick
 import com.pulse.app.ui.components.riseIn
@@ -86,6 +92,12 @@ class SettingsViewModel(private val graph: PulseGraph) : ViewModel() {
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
+    suspend fun exportCsv(): String {
+        val items = db.moneyRecordDao().all().map { MoneyItem(it.amountPaise, it.merchant, it.type, it.occurredAt) }
+        val rules = db.merchantRuleDao().all().associate { it.merchant to Category.valueOf(it.category) }
+        return Exporter.toCsv(items, rules, ZoneId.systemDefault())
+    }
+
     fun deleteEverything() {
         viewModelScope.launch(Dispatchers.IO) {
             // In demo mode this clears only the sample data, and real reminders and keys stay.
@@ -107,6 +119,8 @@ fun SettingsScreen(onOpenReading: () -> Unit, onOpenAi: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val accessOn by rememberNotificationAccess()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var evening by remember { mutableStateOf(EveningBrief.isOn(context)) }
     SettingsContent(
         state,
         accessOn,
@@ -114,6 +128,21 @@ fun SettingsScreen(onOpenReading: () -> Unit, onOpenAi: () -> Unit) {
         onOpenReading,
         onOpenAi,
         vm::deleteEverything,
+        eveningOn = evening,
+        onEvening = {
+            evening = it
+            EveningBrief.set(context.applicationContext, it)
+        },
+        onExport = {
+            scope.launch {
+                val csv = vm.exportCsv()
+                val send = Intent(Intent.ACTION_SEND)
+                    .setType("text/plain")
+                    .putExtra(Intent.EXTRA_SUBJECT, "Memora records")
+                    .putExtra(Intent.EXTRA_TEXT, csv)
+                context.startActivity(Intent.createChooser(send, "Export my records"))
+            }
+        },
         demoOn = graph.demo,
         onDemo = { on ->
             (context.applicationContext as PulseApp).switchDemo(on)
@@ -137,6 +166,9 @@ fun SettingsContent(
     onDeleteEverything: () -> Unit,
     demoOn: Boolean = false,
     onDemo: (Boolean) -> Unit = {},
+    eveningOn: Boolean = true,
+    onEvening: (Boolean) -> Unit = {},
+    onExport: () -> Unit = {},
 ) {
     var showPrivacy by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -183,6 +215,36 @@ fun SettingsContent(
                         scheme.onErrorContainer,
                         Modifier.weight(1f),
                     ) { confirmDelete = true }
+                }
+            }
+        }
+        item {
+            Surface(shape = MaterialTheme.shapes.medium, color = scheme.surface, modifier = Modifier.fillMaxWidth().riseIn(3)) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Evening summary", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "A short recap around 9 PM, on days with something to report. Created on your phone.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = eveningOn, onCheckedChange = onEvening)
+                }
+            }
+        }
+        item {
+            Surface(shape = MaterialTheme.shapes.medium, color = scheme.surface, modifier = Modifier.fillMaxWidth().riseIn(3)) {
+                Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Export my records", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Share your money records as CSV. You choose the app.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = onExport) { Text("Export") }
                 }
             }
         }

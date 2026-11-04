@@ -140,6 +140,10 @@ class ScreensScreenshotTest {
         }
     }
 
+    @Test fun welcome() = shot("welcome") { com.pulse.app.ui.onboarding.OnboardingContent({}, {}, {}) }
+
+    @Test fun welcomeSetup() = shot("welcome_setup") { com.pulse.app.ui.onboarding.OnboardingContent({}, {}, {}, startPage = 2) }
+
     @Test fun homeFirstScreen() = shot("home_first_screen") { Home(accessOn = true) }
 
     @Test fun homeEmpty() = shot("home_empty") { Home(accessOn = false, state = HomeUiState()) }

@@ -28,7 +28,7 @@ object DemoData {
             spent(3, "Ramesh Tea Stall", 60), spent(3, "Airtel Recharge", 299), got(4, "Acme Technologies", 25000),
             spent(5, "Flipkart", 1499), spent(6, "Domino's Pizza", 520), spent(8, "Uber India", 240),
             spent(9, "Reliance Fresh", 1150), spent(10, "Swiggy", 420), spent(11, "Netflix", 199),
-            spent(13, "Electricity Bill", 1240),
+            spent(13, "Electricity Bill", 1240), spent(31, "Airtel Recharge", 299), spent(41, "Netflix", 199),
         )
         val notes = listOf(
             Note(text = "My Wi-Fi router is in the hall cupboard", kind = NoteKind.NOTE.name, createdAt = now - HOUR, pinned = true, source = DEMO),

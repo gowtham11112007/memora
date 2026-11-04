@@ -33,6 +33,7 @@ class CaptureRepository(
     private val onReminderDetected: (Reminder) -> Unit = {},
     private val onBalanceSeen: (Long, Long) -> Unit = { _, _ -> },
     private val isPaused: () -> Boolean = { false },
+    private val onRecordSaved: suspend () -> Unit = {},
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     suspend fun capture(pkg: String, title: String?, text: String?, postedAt: Long): CaptureDecision {
@@ -95,6 +96,7 @@ class CaptureRepository(
             deadline?.let { saveReminder(it, pkg) }
         }
         reminder?.let(onReminderDetected)
+        if (money != null) onRecordSaved()
         return CaptureDecision.STORE
     }
 

@@ -10,6 +10,7 @@ import com.pulse.app.data.Reminder
 import com.pulse.app.domain.DayTotal
 import com.pulse.app.domain.Insights
 import com.pulse.app.domain.MoneyItem
+import com.pulse.app.domain.Subscriptions
 import com.pulse.app.domain.Summaries
 import com.pulse.app.domain.TimeRange
 import com.pulse.app.domain.startDate
@@ -70,7 +71,11 @@ class HomeViewModel(private val app: PulseGraph) : RecordActionsViewModel(app) {
             },
             isDemo = app.demo,
             nextReminder = reminders.filter { it.confirmed && !it.done && it.dueAt >= nowMillis }.minByOrNull { it.dueAt },
-            insights = listOfNotNull(Insights.weekChange(items, today, zone), Insights.topCategory(monthSummary)),
+            insights = listOfNotNull(
+                Insights.weekChange(items, today, zone),
+                Insights.topCategory(monthSummary),
+                Subscriptions.summary(items, today, zone),
+            ),
             balance = Balance.compute(money, items),
             deductedTodayPaise = todaySummary.spentPaise,
             receivedTodayPaise = todaySummary.receivedPaise,

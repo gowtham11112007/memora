@@ -67,6 +67,10 @@ import com.pulse.app.data.Note
 import com.pulse.app.data.Reminder
 import com.pulse.app.domain.AskAnswer
 import com.pulse.app.domain.AskEngine
+import com.pulse.app.domain.AskMoney
+import com.pulse.app.domain.Balance
+import com.pulse.app.domain.Lookups
+import com.pulse.app.domain.MoneyItem
 import com.pulse.app.domain.AskRecord
 import com.pulse.app.domain.AskReminder
 import com.pulse.app.domain.Category
@@ -136,9 +140,17 @@ class AskViewModel(private val graph: PulseGraph) : ViewModel() {
                 return@launch
             }
             // 2. Questions about the user's own records.
-            val local = AskEngine.answer(text, records, reminders, rules, today, zone, System.currentTimeMillis())
+            val settings = graph.moneyPrefs.state.value
+            val items = records.map { MoneyItem(it.amountPaise, it.merchant, it.type, it.at) }
+            val money = AskMoney(Balance.compute(settings, items), settings.budgetPaise)
+            val local = AskEngine.answer(text, records, reminders, rules, today, zone, System.currentTimeMillis(), money)
             if (local.understood) {
                 finish(id, local, AnswerFrom.RECORDS)
+                return@launch
+            }
+            // "Where is my passport?" is about the user's own life, so it searches notes, not the internet.
+            Lookups.query(text)?.let { query ->
+                finish(id, runCommand(ChatCommand.Find(query)), AnswerFrom.RECORDS)
                 return@launch
             }
             // 3. Built-in answers: maths, dates, units, greetings, help.

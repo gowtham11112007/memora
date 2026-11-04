@@ -60,6 +60,7 @@ import com.pulse.app.service.EveningBrief
 import java.time.ZoneId
 import com.pulse.app.ui.components.ArrowChip
 import com.pulse.app.ui.components.bounceClick
+import com.pulse.app.ui.components.labelled
 import com.pulse.app.ui.components.riseIn
 import com.pulse.app.ui.theme.Ink
 import com.pulse.app.ui.theme.Lime
@@ -229,7 +230,7 @@ fun SettingsContent(
                             color = scheme.onSurfaceVariant,
                         )
                     }
-                    Switch(checked = eveningOn, onCheckedChange = onEvening)
+                    Switch(checked = eveningOn, onCheckedChange = onEvening, modifier = Modifier.labelled("Evening summary"))
                 }
             }
         }
@@ -259,7 +260,7 @@ fun SettingsContent(
                             color = scheme.onSurfaceVariant,
                         )
                     }
-                    Switch(checked = demoOn, onCheckedChange = onDemo)
+                    Switch(checked = demoOn, onCheckedChange = onDemo, modifier = Modifier.labelled("Demo mode"))
                 }
             }
         }

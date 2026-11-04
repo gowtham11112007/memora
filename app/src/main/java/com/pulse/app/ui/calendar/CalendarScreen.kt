@@ -87,6 +87,7 @@ import com.pulse.app.ui.components.NoteCard
 import com.pulse.app.ui.components.SectionLabel
 import com.pulse.app.ui.components.bounceClick
 import com.pulse.app.ui.components.hatched
+import com.pulse.app.ui.components.rememberUndo
 import com.pulse.app.ui.components.riseIn
 import com.pulse.app.ui.theme.Ink
 import com.pulse.app.ui.theme.Lime
@@ -166,6 +167,13 @@ class CalendarViewModel(private val graph: PulseGraph) : ViewModel() {
         }
     }
 
+    fun restore(reminder: Reminder) {
+        viewModelScope.launch {
+            dao.insert(reminder)
+            graph.reminders.schedule(reminder)
+        }
+    }
+
     fun delete(reminder: Reminder) {
         viewModelScope.launch {
             dao.delete(reminder)
@@ -181,6 +189,7 @@ fun CalendarScreen() {
     val vm: CalendarViewModel = viewModel(factory = viewModelFactory { initializer { CalendarViewModel(graph) } })
     val state by vm.state.collectAsStateWithLifecycle()
     var adding by remember { mutableStateOf(false) }
+    val undo = rememberUndo()
 
     // Android 13+ asks before an app can show notifications, and reminders need that.
     val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -199,7 +208,10 @@ fun CalendarScreen() {
         onAdd = { adding = true },
         onToggle = vm::toggleDone,
         onConfirm = vm::confirm,
-        onDelete = vm::delete,
+        onDelete = {
+            vm.delete(it)
+            undo("Reminder deleted") { vm.restore(it) }
+        },
     )
     if (adding) AddReminderSheet(state.selected, state.today, { adding = false }, vm::add)
 }
@@ -444,7 +456,7 @@ private fun ReminderRow(
                     Icons.Rounded.Check,
                     if (reminder.done) "Mark as not done" else "Mark as done",
                     { onToggle(reminder) },
-                    size = 44,
+                    size = 48,
                     container = scheme.surface.copy(alpha = 0.65f),
                     tint = if (reminder.done) scheme.onSurface else Color.Transparent,
                 )
@@ -456,7 +468,7 @@ private fun ReminderRow(
                     Icons.Rounded.Close,
                     "Delete reminder",
                     { onDelete(reminder) },
-                    size = 44,
+                    size = 48,
                     container = Color.Transparent,
                     tint = ink.copy(alpha = 0.7f),
                 )

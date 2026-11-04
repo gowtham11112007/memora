@@ -39,6 +39,7 @@ import com.pulse.app.data.LlmMessage
 import com.pulse.app.data.LlmResult
 import com.pulse.app.service.EmailDigest
 import com.pulse.app.ui.components.NoteCard
+import com.pulse.app.ui.components.labelled
 import com.pulse.app.ui.components.ScreenHeader
 import com.pulse.app.ui.theme.Ink
 import com.pulse.app.ui.theme.Lime
@@ -205,7 +206,7 @@ private fun ToggleRow(title: String, note: String, checked: Boolean, onChange: (
                 Text(title, style = MaterialTheme.typography.titleMedium)
                 Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Switch(checked = checked, onCheckedChange = onChange)
+            Switch(checked = checked, onCheckedChange = onChange, modifier = Modifier.labelled(title))
         }
     }
 }

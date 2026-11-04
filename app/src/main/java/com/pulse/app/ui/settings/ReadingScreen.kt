@@ -58,6 +58,7 @@ import com.pulse.app.ui.components.NoteCard
 import com.pulse.app.ui.components.ScreenHeader
 import com.pulse.app.ui.components.SectionLabel
 import com.pulse.app.ui.components.formatCaptureTime
+import com.pulse.app.ui.components.labelled
 import com.pulse.app.ui.components.riseIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -252,7 +253,7 @@ fun ReadingContent(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Switch(checked = paused, onCheckedChange = onPause)
+                    Switch(checked = paused, onCheckedChange = onPause, modifier = Modifier.labelled("Pause reading"))
                 }
             }
         }
@@ -367,7 +368,11 @@ private fun AppToggleRow(row: AppRow, onToggle: (AppItem, Boolean) -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Switch(checked = row.allowed, onCheckedChange = { onToggle(row.app, it) })
+            Switch(
+                checked = row.allowed,
+                onCheckedChange = { onToggle(row.app, it) },
+                modifier = Modifier.labelled("Read notifications from ${row.app.label}"),
+            )
         }
     }
 }

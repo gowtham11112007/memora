@@ -30,6 +30,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,8 +40,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,6 +81,42 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+
+/** The app-wide snackbar, so any screen can offer Undo. */
+val LocalSnackbar = staticCompositionLocalOf { SnackbarHostState() }
+
+/** Returns a function that shows a message with an Undo button, and runs the undo if it's tapped. */
+@Composable
+fun rememberUndo(): (String, () -> Unit) -> Unit {
+    val snackbar = LocalSnackbar.current
+    val scope = rememberCoroutineScope()
+    return remember(snackbar, scope) {
+        { message, undo ->
+            scope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                val result = snackbar.showSnackbar(message, actionLabel = "Undo", duration = SnackbarDuration.Short)
+                if (result == SnackbarResult.ActionPerformed) undo()
+            }
+        }
+    }
+}
+
+/** Gives a control that has no visible text a name for screen readers. */
+fun Modifier.labelled(name: String): Modifier = semantics { contentDescription = name }
+
+/**
+ * The font doesn't carry the rupee sign, so Android substitutes a thin one. Drawing just that
+ * character in the bold system font makes it match the weight of the digits.
+ */
+fun withRupee(text: String): AnnotatedString = buildAnnotatedString {
+    text.forEach { character ->
+        if (character == '₹') {
+            withStyle(SpanStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold)) { append(character) }
+        } else {
+            append(character)
+        }
+    }
+}
 
 /** A soft spring that shrinks a control slightly while it is pressed. */
 @Composable
@@ -120,7 +170,7 @@ fun AnimatedRupees(paise: Long, style: TextStyle, color: Color, modifier: Modifi
     val shown by animateFloatAsState(paise.toFloat(), tween(650, easing = FastOutSlowInEasing), label = "amount")
     // At rest show the exact value, because a Float cannot hold large amounts precisely.
     val text = if (kotlin.math.abs(shown - paise.toFloat()) < 1f) formatRupees(paise) else formatRupees(shown.toLong() / 100 * 100)
-    Text(text, modifier, style = style, color = color, maxLines = 1)
+    Text(withRupee(text), modifier, style = style, color = color, maxLines = 1)
 }
 
 @Composable
@@ -273,7 +323,7 @@ fun RecordRow(
             )
         }
         Text(
-            (if (income) "+" else "−") + formatRupees(record.amountPaise),
+            withRupee((if (income) "+" else "−") + formatRupees(record.amountPaise)),
             style = MaterialTheme.typography.titleMedium,
             color = primaryText,
         )

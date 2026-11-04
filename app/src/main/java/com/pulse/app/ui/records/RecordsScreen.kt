@@ -46,6 +46,7 @@ import com.pulse.app.ui.components.RecordRow
 import com.pulse.app.ui.components.ScreenHeader
 import com.pulse.app.ui.components.formatCaptureTime
 import com.pulse.app.ui.components.rememberAppLabel
+import com.pulse.app.ui.components.rememberUndo
 import com.pulse.app.ui.components.riseIn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -99,7 +100,13 @@ fun RecordsScreen(onBack: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     var open by remember { mutableStateOf<MoneyRecord?>(null) }
     RecordsContent(state, vm::select, onBack) { open = it }
-    open?.let { RecordDetailSheet(it, state.rules, { open = null }, vm::setCategory, vm::delete) }
+    val undo = rememberUndo()
+    open?.let { record ->
+        RecordDetailSheet(record, state.rules, { open = null }, vm::setCategory) {
+            vm.delete(it)
+            undo("Record deleted") { vm.restore(it) }
+        }
+    }
 }
 
 private fun dayLabel(epochMs: Long): String {

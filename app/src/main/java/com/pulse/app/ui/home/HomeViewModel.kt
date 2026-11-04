@@ -47,10 +47,18 @@ data class HomeUiState(
 
 class HomeViewModel(private val app: PulseGraph) : RecordActionsViewModel(app) {
     private val range = MutableStateFlow(TimeRange.TODAY)
+    private val clockHour = MutableStateFlow(currentHour())
+
+    private fun currentHour() = "${LocalDate.now()}-${LocalTime.now().hour}"
+
+    /** Recalculates totals and the greeting when the hour or day has changed. */
+    fun refreshClock() {
+        clockHour.value = currentHour()
+    }
     private val zone = ZoneId.systemDefault()
 
     val state = combine(
-        range,
+        combine(range, clockHour) { selected, _ -> selected },
         graph.db.moneyRecordDao().observeAll(),
         graph.db.merchantRuleDao().observeAll(),
         app.moneyPrefs.state,

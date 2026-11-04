@@ -4,7 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.pulse.app.PulseShell
@@ -182,6 +185,15 @@ class ScreensScreenshotTest {
             Note(5, "Interview on Friday", "EVENT", now, false, "gmail"),
         )
         PulseShell(Route.BRAIN, {}) { BrainContent(BrainUiState(notes = notes), {}, {}, {}, {}, {}) }
+    }
+
+    @Test fun smallButtonsAreBigEnoughToTap() {
+        val note = Note(1, "A note", "NOTE", now, false, "manual")
+        rule.setContent {
+            PulseTheme { BrainContent(BrainUiState(notes = listOf(note)), {}, {}, {}, {}, {}) }
+        }
+        rule.onNodeWithContentDescription("Delete note").assertHeightIsAtLeast(48.dp)
+        rule.onNodeWithContentDescription("Pin").assertWidthIsAtLeast(48.dp)
     }
 
     @Test fun settingsLight() = shot("settings_light") {

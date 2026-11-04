@@ -30,6 +30,7 @@ import com.pulse.app.domain.Categoriser
 import com.pulse.app.domain.Category
 import com.pulse.app.domain.RecordType
 import com.pulse.app.domain.formatRupees
+import com.pulse.app.service.BudgetAlert
 import kotlinx.coroutines.launch
 
 /** Shared actions on records, used by Home and Records. */
@@ -45,7 +46,13 @@ open class RecordActionsViewModel(protected val graph: PulseGraph) : ViewModel()
                     occurredAt = System.currentTimeMillis(),
                 ),
             )
+            if (type == RecordType.EXPENSE) BudgetAlert.check(graph)
         }
+    }
+
+    /** Puts a deleted record back, with the same ID, for Undo. */
+    fun restore(record: MoneyRecord) {
+        viewModelScope.launch { graph.db.moneyRecordDao().insert(record) }
     }
 
     /** Saves a rule, so every record from this merchant gets this category from now on. */

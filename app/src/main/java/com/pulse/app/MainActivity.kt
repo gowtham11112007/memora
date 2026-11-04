@@ -35,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +52,7 @@ import com.pulse.app.ui.ask.AskScreen
 import com.pulse.app.ui.onboarding.OnboardingContent
 import com.pulse.app.ui.brain.BrainScreen
 import com.pulse.app.ui.calendar.CalendarScreen
+import com.pulse.app.ui.components.LocalSnackbar
 import com.pulse.app.ui.components.PulseNav
 import com.pulse.app.ui.home.HomeScreen
 import com.pulse.app.ui.records.RecordsScreen
@@ -174,7 +176,7 @@ fun PulseShell(
                 enter togetherWith exit
             },
             label = "page",
-        ) { current -> content(current) }
+        ) { current -> CompositionLocalProvider(LocalSnackbar provides snackbar) { content(current) } }
 
         AnimatedVisibility(
             visible = route.tab != null && !keyboardOpen,
@@ -184,6 +186,7 @@ fun PulseShell(
         ) {
             PulseNav(selected = route.tab ?: 0, onSelect = { index -> onRoute(tabs[index]) })
         }
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 16.dp))
+        // Sits above the bottom bar, so Undo is never hidden behind it.
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 108.dp))
     }
 }

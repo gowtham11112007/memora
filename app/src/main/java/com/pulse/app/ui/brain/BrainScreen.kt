@@ -54,6 +54,7 @@ import com.pulse.app.ui.components.CircleIconButton
 import com.pulse.app.ui.components.FilterPills
 import com.pulse.app.ui.components.NoteCard
 import com.pulse.app.ui.components.formatCaptureTime
+import com.pulse.app.ui.components.rememberUndo
 import com.pulse.app.ui.components.riseIn
 import com.pulse.app.ui.theme.Ink
 import com.pulse.app.ui.theme.Lime
@@ -113,6 +114,10 @@ class BrainViewModel(private val graph: PulseGraph) : ViewModel() {
     fun delete(note: Note) {
         viewModelScope.launch { dao.delete(note) }
     }
+
+    fun restore(note: Note) {
+        viewModelScope.launch { dao.insert(note) }
+    }
 }
 
 @Composable
@@ -121,7 +126,11 @@ fun BrainScreen() {
     val vm: BrainViewModel = viewModel(factory = viewModelFactory { initializer { BrainViewModel(graph) } })
     val state by vm.state.collectAsStateWithLifecycle()
     var adding by remember { mutableStateOf(false) }
-    BrainContent(state, vm::selectKind, vm::setSearch, { adding = true }, vm::togglePin, vm::delete)
+    val undo = rememberUndo()
+    BrainContent(state, vm::selectKind, vm::setSearch, { adding = true }, vm::togglePin) {
+        vm.delete(it)
+        undo("Note deleted") { vm.restore(it) }
+    }
     if (adding) AddNoteSheet({ adding = false }, vm::add)
 }
 
@@ -216,11 +225,11 @@ private fun NoteRow(note: Note, onPin: (Note) -> Unit, onDelete: (Note) -> Unit,
                 Icons.Rounded.Star,
                 if (note.pinned) "Unpin" else "Pin",
                 { onPin(note) },
-                size = 42,
+                size = 48,
                 container = Color.Transparent,
                 tint = if (note.pinned) scheme.primary else ink.copy(alpha = 0.28f),
             )
-            CircleIconButton(Icons.Rounded.Close, "Delete note", { onDelete(note) }, size = 42, container = Color.Transparent, tint = ink.copy(alpha = 0.6f))
+            CircleIconButton(Icons.Rounded.Close, "Delete note", { onDelete(note) }, size = 48, container = Color.Transparent, tint = ink.copy(alpha = 0.6f))
         }
     }
 }

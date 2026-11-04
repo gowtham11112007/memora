@@ -39,6 +39,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,7 +80,11 @@ import com.pulse.app.ui.components.SparkIcon
 import com.pulse.app.ui.components.bounceClick
 import com.pulse.app.ui.components.formatCaptureTime
 import com.pulse.app.ui.components.hatched
+import com.pulse.app.ui.components.labelled
 import com.pulse.app.ui.components.parseRupees
+import com.pulse.app.ui.components.rememberUndo
+import com.pulse.app.ui.components.withRupee
+import kotlinx.coroutines.delay
 import com.pulse.app.ui.components.riseIn
 import com.pulse.app.ui.settings.rememberNotificationAccess
 import com.pulse.app.ui.theme.Ink
@@ -98,6 +103,13 @@ fun HomeScreen(onViewRecords: () -> Unit, onOpenReading: () -> Unit, onOpenCalen
     var adding by remember { mutableStateOf(false) }
     var openRecord by remember { mutableStateOf<MoneyRecord?>(null) }
     var editingMoney by remember { mutableStateOf(false) }
+    val undo = rememberUndo()
+    LaunchedEffect(Unit) {
+        while (true) {
+            vm.refreshClock()
+            delay(60_000)
+        }
+    }
 
     HomeContent(
         onEditMoney = { editingMoney = true },
@@ -114,7 +126,10 @@ fun HomeScreen(onViewRecords: () -> Unit, onOpenReading: () -> Unit, onOpenCalen
     if (adding) AddRecordSheet(onDismiss = { adding = false }, onSave = vm::addManual)
     if (editingMoney) EditMoneySheet({ editingMoney = false }, vm::saveMoney)
     openRecord?.let { record ->
-        RecordDetailSheet(record, state.rules, { openRecord = null }, vm::setCategory, vm::delete)
+        RecordDetailSheet(record, state.rules, { openRecord = null }, vm::setCategory) {
+            vm.delete(it)
+            undo("Record deleted") { vm.restore(it) }
+        }
     }
 }
 
@@ -245,7 +260,7 @@ private fun FlowChip(label: String, value: String, modifier: Modifier) {
             .padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = ink.copy(alpha = 0.7f), maxLines = 1)
-        Text(value, style = MaterialTheme.typography.titleMedium, color = ink, maxLines = 1)
+        Text(withRupee(value), style = MaterialTheme.typography.titleMedium, color = ink, maxLines = 1)
     }
 }
 
@@ -692,7 +707,7 @@ private fun RecentPanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Recent", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, color = ink)
-                Box(Modifier.bounceClick(onClick = onViewRecords)) { ArrowChip(Lime, Ink) }
+                Box(Modifier.bounceClick(onClick = onViewRecords).labelled("View all records")) { ArrowChip(Lime, Ink, size = 48.dp) }
             }
             if (state.recent.isEmpty()) {
                 Text(

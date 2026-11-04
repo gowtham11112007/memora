@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- An M drawn as one rounded line, kept inside the 66dp adaptive-icon safe zone. -->
+    <path
+        android:pathData="M33,72 L33,45 C33,40 38,38 41,42 L54,59 L67,42 C70,38 75,40 75,45 L75,72"
+        android:strokeWidth="8"
+        android:strokeColor="#D6F24C"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <!-- A small dot above it: a remembered thought. -->
+    <path
+        android:fillColor="#D6F24C"
+        android:pathData="M54,35 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" />
+</vector>

@@ -1,0 +1,14 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build/
+/app/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+# Secrets / local config (LLM keys etc. live here, never in Git)
+secrets.properties
+*.jks
+*.keystore

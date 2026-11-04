@@ -1,0 +1,6 @@
+# Real messages for measuring the extractor. Change personal details before adding one.
+# Columns, separated by tabs: title, message, expected, merchant
+# expected is NONE, or TYPE:PAISE such as EXPENSE:25000 for ₹250. Leave merchant empty if the message names none.
+Received ₹1 from Kiran K B	Deposited in your Indian Overseas Bank - 4131 on 04 November at 2:39 PM	INCOME:100	Kiran K B
+Now, smart investing is for all.	Presenting the new PhonePe Invest app – from the house of PhonePe. Explore now	NONE
+Final price crash on smartphones	Last chance to avail the best smartphone deals	NONE

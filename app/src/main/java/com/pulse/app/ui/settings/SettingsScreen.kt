@@ -1,0 +1,304 @@
+package com.pulse.app.ui.settings
+
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import android.content.Intent
+import com.pulse.app.MainActivity
+import com.pulse.app.PulseApp
+import com.pulse.app.PulseGraph
+import com.pulse.app.domain.RecordType
+import com.pulse.app.ui.components.ArrowChip
+import com.pulse.app.ui.components.bounceClick
+import com.pulse.app.ui.components.riseIn
+import com.pulse.app.ui.theme.Ink
+import com.pulse.app.ui.theme.Lime
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+
+data class SettingsUiState(
+    val expenses: Int = 0,
+    val income: Int = 0,
+    val blocked: Int = 0,
+    val allowedApps: Int = 0,
+)
+
+class SettingsViewModel(private val graph: PulseGraph) : ViewModel() {
+    private val db = graph.db
+
+    val state = combine(
+        db.moneyRecordDao().observeAll(),
+        db.dropLogDao().observeCountSince(0),
+        db.appPermissionDao().observeAll(),
+    ) { records, blocked, permissions ->
+        SettingsUiState(
+            expenses = records.count { it.type == RecordType.EXPENSE },
+            income = records.count { it.type == RecordType.INCOME },
+            blocked = blocked,
+            allowedApps = permissions.count { it.allowed },
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
+
+    fun deleteEverything() {
+        viewModelScope.launch(Dispatchers.IO) {
+            // In demo mode this clears only the sample data, and real reminders and keys stay.
+            if (!graph.demo) {
+                graph.reminders.cancelAll()
+                com.pulse.app.service.EmailDigest.schedule(graph.appContext, false)
+                graph.aiSettings.clear()
+            }
+            graph.moneyPrefs.clear()
+            db.clearAllTables()
+        }
+    }
+}
+
+@Composable
+fun SettingsScreen(onOpenReading: () -> Unit, onOpenAi: () -> Unit) {
+    val graph = (LocalContext.current.applicationContext as PulseApp).graph
+    val vm: SettingsViewModel = viewModel(factory = viewModelFactory { initializer { SettingsViewModel(graph) } })
+    val state by vm.state.collectAsStateWithLifecycle()
+    val accessOn by rememberNotificationAccess()
+    val context = LocalContext.current
+    SettingsContent(
+        state,
+        accessOn,
+        graph.aiSettings.load().isSet,
+        onOpenReading,
+        onOpenAi,
+        vm::deleteEverything,
+        demoOn = graph.demo,
+        onDemo = { on ->
+            (context.applicationContext as PulseApp).switchDemo(on)
+            // A fresh task gives every screen a new ViewModel, reading from the other database.
+            context.startActivity(
+                Intent(context, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
+            )
+        },
+    )
+}
+
+/** Plain data in, callbacks out. No database, so tests can render it directly. */
+@Composable
+fun SettingsContent(
+    state: SettingsUiState,
+    accessOn: Boolean,
+    aiConnected: Boolean,
+    onOpenReading: () -> Unit,
+    onOpenAi: () -> Unit,
+    onDeleteEverything: () -> Unit,
+    demoOn: Boolean = false,
+    onDemo: (Boolean) -> Unit = {},
+) {
+    var showPrivacy by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    val scheme = MaterialTheme.colorScheme
+    val readingNote = when {
+        !accessOn -> "Off. Tap to turn on"
+        state.allowedApps == 1 -> "On · 1 source"
+        else -> "On · ${state.allowedApps} sources"
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().statusBarsPadding(),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 128.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Text(
+                "Settings",
+                Modifier.padding(bottom = 4.dp).riseIn(0),
+                style = MaterialTheme.typography.headlineLarge,
+                color = scheme.onBackground,
+            )
+        }
+        item { DataCard(state, Modifier.riseIn(1)) }
+        item {
+            Column(Modifier.riseIn(2), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ControlTile("Notification reading", readingNote, Lime, Ink, Modifier.weight(1f), onOpenReading)
+                    ControlTile(
+                        "AI and email",
+                        if (aiConnected) "Gemini connected" else "Add your free keys",
+                        scheme.inverseSurface,
+                        scheme.inverseOnSurface,
+                        Modifier.weight(1f),
+                        onOpenAi,
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ControlTile("Privacy", "What stays on this phone", scheme.secondaryContainer, scheme.onSecondaryContainer, Modifier.weight(1f)) { showPrivacy = true }
+                    ControlTile(
+                        if (demoOn) "Delete sample data" else "Delete my data",
+                        "Remove everything",
+                        scheme.errorContainer,
+                        scheme.onErrorContainer,
+                        Modifier.weight(1f),
+                    ) { confirmDelete = true }
+                }
+            }
+        }
+        item {
+            Surface(shape = MaterialTheme.shapes.medium, color = scheme.surface, modifier = Modifier.fillMaxWidth().riseIn(3)) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Demo mode", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Shows sample data for presenting. Your real data stays hidden and unchanged.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = demoOn, onCheckedChange = onDemo)
+                }
+            }
+        }
+    }
+
+    if (showPrivacy) {
+        AlertDialog(
+            onDismissRequest = { showPrivacy = false },
+            confirmButton = { TextButton(onClick = { showPrivacy = false }) { Text("Got it") } },
+            title = { Text("Your privacy") },
+            text = {
+                Text(
+                    "• Notifications and records stay on this phone.\n" +
+                        "• Only apps you turn on are read.\n" +
+                        "• OTPs, passwords, CVVs and PINs are dropped before anything is saved.\n" +
+                        "• Long reference numbers are masked.\n" +
+                        "• Message text is deleted after 24 hours.\n" +
+                        "• Short lines from useful messages stay in Second Brain until you delete them.\n" +
+                        "• If you add a Gemini key, general questions you type are sent to Google. Free-tier data may be used to improve Google's products, so don't type private details.\n" +
+                        "• If you turn on email, weekly totals are sent through Resend. They name no merchants or messages.\n" +
+                        "• The database is not encrypted yet.",
+                )
+            },
+        )
+    }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            confirmButton = {
+                TextButton(onClick = { onDeleteEverything(); confirmDelete = false }) { Text("Delete everything") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+            title = { Text("Delete all your data?") },
+            text = { Text("This removes every record, reminder, category, allowed app and AI setting from this phone. It can't be undone.") },
+        )
+    }
+}
+
+@Composable
+private fun DataCard(state: SettingsUiState, modifier: Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    val expenseColor = scheme.primary
+    val incomeColor = Color(0xFF7FC7A0)
+    val blockedColor = Color(0xFFFF8FB6)
+    val total = (state.expenses + state.income + state.blocked).coerceAtLeast(1).toFloat()
+    var started by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { started = true }
+    val grow by animateFloatAsState(if (started) 1f else 0f, tween(900, easing = FastOutSlowInEasing), label = "ring")
+    Surface(shape = MaterialTheme.shapes.large, color = scheme.surface, modifier = modifier.fillMaxWidth()) {
+        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Your data", style = MaterialTheme.typography.titleLarge)
+                LegendRow(expenseColor, "Expenses · ${state.expenses}")
+                LegendRow(incomeColor, "Income · ${state.income}")
+                LegendRow(blockedColor, "Codes blocked · ${state.blocked}")
+            }
+            Box(Modifier.size(128.dp), contentAlignment = Alignment.Center) {
+                val track = scheme.surfaceVariant
+                val hub = scheme.primaryContainer
+                Canvas(Modifier.fillMaxSize()) {
+                    val stroke = 13.dp.toPx()
+                    val box = Size(size.width - stroke, size.height - stroke)
+                    val corner = Offset(stroke / 2, stroke / 2)
+                    drawArc(track, 0f, 360f, false, corner, box, style = Stroke(stroke))
+                    var start = -90f
+                    listOf(state.expenses to expenseColor, state.income to incomeColor, state.blocked to blockedColor).forEach { (count, color) ->
+                        val sweep = 360f * (count / total) * grow
+                        if (sweep > 0f) {
+                            drawArc(color, start, sweep, false, corner, box, style = Stroke(stroke, cap = StrokeCap.Round))
+                        }
+                        start += sweep
+                    }
+                    drawCircle(hub, radius = size.minDimension * 0.27f)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LegendRow(color: Color, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(Modifier.size(9.dp).clip(CircleShape).background(color))
+        Text(text, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun ControlTile(title: String, note: String, fill: Color, ink: Color, modifier: Modifier, onClick: () -> Unit) {
+    Column(
+        modifier
+            .bounceClick(onClick = onClick)
+            .height(172.dp)
+            .clip(MaterialTheme.shapes.large)
+            .background(fill)
+            .padding(16.dp),
+    ) {
+        ArrowChip(ink, fill, size = 38.dp)
+        Spacer(Modifier.weight(1f))
+        Text(title, style = MaterialTheme.typography.titleLarge, color = ink)
+        Spacer(Modifier.height(2.dp))
+        Text(note, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.72f))
+    }
+}

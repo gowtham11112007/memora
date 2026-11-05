@@ -69,6 +69,7 @@ import com.pulse.app.service.EveningBrief
 import com.pulse.app.ui.activity.ActivityScreen
 import com.pulse.app.ui.activity.PeopleScreen
 import com.pulse.app.ui.ask.AskScreen
+import com.pulse.app.ui.ask.ChatHistoryScreen
 import com.pulse.app.ui.todo.TodoScreen
 import com.pulse.app.ui.onboarding.OnboardingContent
 import com.pulse.app.ui.brain.BrainScreen
@@ -129,6 +130,7 @@ enum class Route(val tab: Int?) {
     ACTIVITY(null),
     PEOPLE(null),
     TODO(null),
+    CHAT_HISTORY(null),
 }
 
 @Composable
@@ -236,7 +238,7 @@ private fun PulseRoot(openRequest: String?, onOpened: () -> Unit) {
                 onOpenActivity = { open(Route.ACTIVITY) },
             )
             Route.CALENDAR -> CalendarScreen(onOpenTodo = { open(Route.TODO) })
-            Route.ASK -> AskScreen(onOpenAi = { open(Route.AI) })
+            Route.ASK -> AskScreen(onOpenAi = { open(Route.AI) }, onOpenHistory = { open(Route.CHAT_HISTORY) })
             Route.BRAIN -> BrainScreen()
             Route.SETTINGS -> SettingsScreen(
                 onOpenReading = { open(Route.READING) },
@@ -254,6 +256,7 @@ private fun PulseRoot(openRequest: String?, onOpened: () -> Unit) {
             )
             Route.PEOPLE -> PeopleScreen(onBack = back)
             Route.TODO -> TodoScreen(onBack = back)
+            Route.CHAT_HISTORY -> ChatHistoryScreen(onBack = back)
         }
     }
 }

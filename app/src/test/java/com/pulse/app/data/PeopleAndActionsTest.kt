@@ -259,6 +259,23 @@ class PeopleAndActionsTest {
     }
 
     @Test
+    fun `chats save, reopen by conversation, trim and delete`() = runBlocking {
+        val chats = db.chatDao()
+        repeat(6) { chats.insert(ChatEntry(conversation = (it % 2).toLong(), question = "q$it", answer = "a$it", source = "AI", at = it.toLong())) }
+        assertEquals(listOf("q0", "q2", "q4"), chats.conversation(0).map { it.question })
+        assertEquals("q5", chats.latest()?.question)
+        chats.trim(4)
+        assertEquals(listOf("q2", "q3", "q4", "q5"), chats.all().map { it.question })
+        val removed = chats.conversation(1)
+        chats.deleteConversation(1)
+        assertEquals(listOf("q2", "q4"), chats.all().map { it.question })
+        chats.insertAll(removed)
+        assertEquals("undo brings it back", 4, chats.all().size)
+        chats.deleteAll()
+        assertEquals(null, chats.latest())
+    }
+
+    @Test
     fun `when Gemini fails, the word rules take over`() = runBlocking {
         geminiReply = null
         assertEquals(CaptureDecision.STORE, smartRepo().capture(WHATSAPP, "Rahul", "Your parcel is arriving tomorrow", clock))

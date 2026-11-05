@@ -75,6 +75,8 @@ object DemoData {
             todos.forEach { db.todoDao().insert(it) }
             people.forEach { db.contactRuleDao().upsert(it) }
             activity.forEach { db.activityDao().insert(it) }
+            db.chatDao().insert(ChatEntry(conversation = now - DAY, question = "Where is my passport?", answer = "Your passport is in the blue drawer.", source = "AI", at = now - DAY))
+            db.chatDao().insert(ChatEntry(conversation = now - DAY, question = "When is my parcel coming?", answer = "Your order is arriving tomorrow morning at 9 AM.", source = "AI", at = now - DAY + 60_000))
             repeat(3) { db.dropLogDao().insert(DropLog(droppedAt = now - it * DAY)) }
             apps.forEach { (pkg, label) -> db.appPermissionDao().upsert(AppPermission(pkg, label, true)) }
         }

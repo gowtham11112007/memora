@@ -9,9 +9,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         RawEvent::class, AppPermission::class, MoneyRecord::class, DropLog::class,
         MerchantRule::class, Reminder::class, AppSeen::class, Note::class,
-        ContactRule::class, ActivityEntry::class, Todo::class,
+        ContactRule::class, ActivityEntry::class, Todo::class, ChatEntry::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 abstract class PulseDatabase : RoomDatabase() {
@@ -26,6 +26,19 @@ abstract class PulseDatabase : RoomDatabase() {
     abstract fun contactRuleDao(): ContactRuleDao
     abstract fun activityDao(): ActivityDao
     abstract fun todoDao(): TodoDao
+    abstract fun chatDao(): ChatDao
+}
+
+/** Adds saved chats. */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `chat_turn` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `conversation` INTEGER NOT NULL, " +
+                "`question` TEXT NOT NULL, `answer` TEXT NOT NULL, `source` TEXT NOT NULL, `notes` TEXT NOT NULL, `at` INTEGER NOT NULL)",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_chat_turn_conversation` ON `chat_turn` (`conversation`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_chat_turn_at` ON `chat_turn` (`at`)")
+    }
 }
 
 /** Remembers who each suggestion came from, and what each notification became. */

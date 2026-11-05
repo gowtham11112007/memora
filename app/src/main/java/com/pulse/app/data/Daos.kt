@@ -103,6 +103,37 @@ interface ReminderDao {
 }
 
 @Dao
+interface ChatDao {
+    @Insert
+    suspend fun insert(entry: ChatEntry): Long
+
+    @Insert
+    suspend fun insertAll(entries: List<ChatEntry>)
+
+    @Query("SELECT * FROM chat_turn ORDER BY at, id")
+    fun observeAll(): Flow<List<ChatEntry>>
+
+    @Query("SELECT * FROM chat_turn ORDER BY at, id")
+    suspend fun all(): List<ChatEntry>
+
+    @Query("SELECT * FROM chat_turn WHERE conversation = :id ORDER BY at, id")
+    suspend fun conversation(id: Long): List<ChatEntry>
+
+    @Query("SELECT * FROM chat_turn ORDER BY at DESC, id DESC LIMIT 1")
+    suspend fun latest(): ChatEntry?
+
+    @Query("DELETE FROM chat_turn WHERE conversation = :id")
+    suspend fun deleteConversation(id: Long)
+
+    @Query("DELETE FROM chat_turn")
+    suspend fun deleteAll()
+
+    /** Keeps the newest turns, so history can't grow forever. */
+    @Query("DELETE FROM chat_turn WHERE id NOT IN (SELECT id FROM chat_turn ORDER BY at DESC, id DESC LIMIT :keep)")
+    suspend fun trim(keep: Int)
+}
+
+@Dao
 interface ContactRuleDao {
     @Upsert
     suspend fun upsert(rule: ContactRule)

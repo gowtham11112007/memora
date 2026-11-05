@@ -244,6 +244,26 @@ class ScreensScreenshotTest {
         rule.onRoot().captureRoboImage("build/shots/edit_money.png")
     }
 
+    private val savedChats = listOf(
+        com.pulse.app.domain.ChatSummary(1, "Where is my passport?", "Your passport is in the blue drawer.", 2, now, "passport blue drawer"),
+        com.pulse.app.domain.ChatSummary(2, "Explain how UPI works", "UPI moves money between bank accounts instantly.", 1, now - 86_400_000, "upi bank"),
+    )
+
+    @Test fun chatHistory() = shot("chat_history") {
+        PulseShell(Route.CHAT_HISTORY, {}) { com.pulse.app.ui.ask.ChatHistoryContent(savedChats, {}, {}, {}, {}) }
+    }
+
+    @Test fun chatHistorySearchAndOpen() {
+        var opened = -1L
+        rule.setContent { PulseTheme { com.pulse.app.ui.ask.ChatHistoryContent(savedChats, {}, { opened = it }, {}, {}) } }
+        rule.onNodeWithText("Today").assertExists()
+        rule.onNode(hasSetTextAction()).performTextInput("upi")
+        rule.waitForIdle()
+        rule.onNodeWithText("Where is my passport?").assertDoesNotExist()
+        rule.onNodeWithText("Explain how UPI works").performClick()
+        org.junit.Assert.assertEquals(2L, opened)
+    }
+
     @Test fun lockScreen() = shot("lock") { com.pulse.app.LockContent {} }
 
     @Test fun homeWithAnswersWaiting() = shot("home_waiting") {

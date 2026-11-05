@@ -166,9 +166,9 @@ fun AiContent(
             onSmart(it)
         }
         ToggleRow(
-            "Use Second Brain in chat",
-            "Lets Memora AI answer from your notes. Notes that help with your question are sent with it to the cloud AI " +
-                "services. Notes with codes or passwords stay on this phone.",
+            "Use my notes and past chats",
+            "Lets Memora AI answer from your Second Brain and earlier chats. Whatever helps with your question is sent with it " +
+                "to the cloud AI services. Anything with codes or passwords stays on this phone.",
             brain,
         ) {
             brain = it

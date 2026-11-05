@@ -74,6 +74,21 @@ data class Reminder(
     @ColumnInfo(defaultValue = "") val origin: String = "",
 )
 
+/** One question and answer in a saved chat. It stays on the phone until the user deletes it. */
+@Entity(tableName = "chat_turn", indices = [Index("conversation"), Index("at")])
+data class ChatEntry(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** The time the chat started, which groups its turns together. */
+    val conversation: Long,
+    val question: String,
+    val answer: String,
+    /** An AnswerFrom name. */
+    val source: String,
+    /** Any notes shown under the answer, one per line. */
+    val notes: String = "",
+    val at: Long,
+)
+
 /** A person the user starred or muted, matched against the name a notification shows. */
 @Entity(tableName = "contact_rule")
 data class ContactRule(

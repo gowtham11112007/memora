@@ -1,5 +1,30 @@
 package com.pulse.app.ui.ask
 
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.automirrored.rounded.List
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.style.TextOverflow
+import com.pulse.app.data.ChatEntry
+import com.pulse.app.domain.ChatMemory
+import com.pulse.app.domain.ChatSummary
+import com.pulse.app.domain.PastTurn
+import com.pulse.app.ui.components.NoteCard
+import com.pulse.app.ui.components.ScreenHeader
+import com.pulse.app.ui.components.SectionLabel
+import com.pulse.app.ui.components.rememberUndo
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import java.time.Instant
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -119,9 +144,71 @@ private const val SYSTEM_PROMPT =
         "Don't bring up which company or model powers you. If the user asks, say you are Memora's assistant, running on cloud AI services from Google and Groq. " +
         "You cannot see the user's records unless they are given in this message, so never invent their amounts or dates."
 
-/** The conversation lives in memory only and disappears when the app closes. */
+/** Chats are saved on the phone. Coming back within a few hours continues the same one. */
 class AskViewModel(private val graph: PulseGraph) : ViewModel() {
     val turns = MutableStateFlow<List<ChatTurn>>(emptyList())
+    private val chats = graph.db.chatDao()
+    private var conversation = System.currentTimeMillis()
+    private var nextId = 0
+    private val waiting = mutableMapOf<Int, Pair<Long, String>>()
+
+    val history = chats.observeAll()
+        .map { rows -> ChatMemory.conversations(rows.map(::pastTurn)) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    init {
+        viewModelScope.launch {
+            val latest = chats.latest()
+            if (latest != null && System.currentTimeMillis() - latest.at < CONTINUE_MS && turns.value.isEmpty()) show(latest.conversation)
+        }
+        // "Delete my data" empties the table, so the open chat must go too.
+        viewModelScope.launch {
+            var hadChats = false
+            chats.observeAll().collect { rows ->
+                if (hadChats && rows.isEmpty()) newChat()
+                hadChats = rows.isNotEmpty()
+            }
+        }
+    }
+
+    private fun pastTurn(row: ChatEntry) = PastTurn(row.conversation, row.question, row.answer, row.at)
+
+    private suspend fun show(id: Long) {
+        conversation = id
+        turns.value = chats.conversation(id).map { row ->
+            val from = AnswerFrom.entries.firstOrNull { it.name == row.source } ?: AnswerFrom.RECORDS
+            ChatTurn(nextId++, row.question, AskAnswer(row.answer, notes = row.notes.split("\n").filter { it.isNotBlank() }), from)
+        }
+    }
+
+    fun newChat() {
+        conversation = System.currentTimeMillis()
+        turns.value = emptyList()
+    }
+
+    fun open(id: Long) {
+        viewModelScope.launch { show(id) }
+    }
+
+    fun delete(id: Long, onDeleted: (List<ChatEntry>) -> Unit) {
+        viewModelScope.launch {
+            val rows = chats.conversation(id)
+            chats.deleteConversation(id)
+            if (id == conversation) newChat()
+            onDeleted(rows)
+        }
+    }
+
+    fun restore(rows: List<ChatEntry>) {
+        viewModelScope.launch { chats.insertAll(rows) }
+    }
+
+    fun clearAll() {
+        viewModelScope.launch {
+            chats.deleteAll()
+            newChat()
+        }
+    }
     val aiConnected = MutableStateFlow(graph.ai.hasAi())
 
     fun refresh() {
@@ -137,7 +224,8 @@ class AskViewModel(private val graph: PulseGraph) : ViewModel() {
     fun ask(question: String) {
         val text = question.trim()
         if (text.isEmpty()) return
-        val id = turns.value.size
+        val id = nextId++
+        waiting[id] = conversation to text
         turns.value = turns.value + ChatTurn(id, text)
         viewModelScope.launch {
             val db = graph.db
@@ -187,7 +275,9 @@ class AskViewModel(private val graph: PulseGraph) : ViewModel() {
             }
             val totals = if (config.shareTotals) AskEngine.monthTotalsLine(records, rules, today, zone) else null
             val brain = if (readsBrain) BrainContext.section(BrainContext.pick(notes, text), zone) else ""
-            val system = listOfNotNull(SYSTEM_PROMPT, "Today is ${today.dayOfWeek}, $today.", totals).joinToString(" ") + brain
+            val earlier = if (readsBrain) chats.all().filter { it.conversation != conversation }.map(::pastTurn) else emptyList()
+            val memory = ChatMemory.section(ChatMemory.pick(earlier, text), zone)
+            val system = listOfNotNull(SYSTEM_PROMPT, "Today is ${today.dayOfWeek}, $today.", totals).joinToString(" ") + brain + memory
             val messages = buildMessages(text)
             val tooSlow: LlmResult = LlmResult.Failed("That's taking too long. Check your internet and try again.")
             when (val result = withinLimit(tooSlow) { graph.ai.answer(graph.ai.chatModels(), system, messages) }) {
@@ -286,27 +376,52 @@ class AskViewModel(private val graph: PulseGraph) : ViewModel() {
 
     private fun finish(id: Int, answer: AskAnswer, from: AnswerFrom) {
         turns.value = turns.value.map { if (it.id == id) it.copy(answer = answer, from = from) else it }
+        val (chat, question) = waiting.remove(id) ?: return
+        // Errors aren't worth keeping, and a message with a code or password never goes in the history.
+        if (from == AnswerFrom.NOTICE || PrivacyFilter.isSensitive(question)) return
+        viewModelScope.launch {
+            chats.insert(
+                ChatEntry(
+                    conversation = chat,
+                    question = PrivacyFilter.mask(question),
+                    answer = PrivacyFilter.mask(answer.text),
+                    source = from.name,
+                    notes = answer.notes.joinToString("\n"),
+                    at = System.currentTimeMillis(),
+                ),
+            )
+            chats.trim(MAX_SAVED_TURNS)
+        }
     }
 
     private companion object {
         const val HISTORY_TURNS = 4
         const val WAIT_LIMIT_MS = 25_000L
+        const val CONTINUE_MS = 6L * 60 * 60 * 1000
+        const val MAX_SAVED_TURNS = 500
     }
 }
 
 @Composable
-fun AskScreen(onOpenAi: () -> Unit) {
+fun AskScreen(onOpenAi: () -> Unit, onOpenHistory: () -> Unit) {
     val graph = (LocalContext.current.applicationContext as PulseApp).graph
     val vm: AskViewModel = viewModel(factory = viewModelFactory { initializer { AskViewModel(graph) } })
     val turns by vm.turns.collectAsStateWithLifecycle()
     val connected by vm.aiConnected.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { vm.refresh() }
-    AskContent(turns, connected, vm::ask, onOpenAi)
+    AskContent(turns, connected, vm::ask, onOpenAi, onOpenHistory, vm::newChat)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun AskContent(turns: List<ChatTurn>, aiConnected: Boolean, onAsk: (String) -> Unit, onOpenAi: () -> Unit) {
+fun AskContent(
+    turns: List<ChatTurn>,
+    aiConnected: Boolean,
+    onAsk: (String) -> Unit,
+    onOpenAi: () -> Unit,
+    onHistory: () -> Unit = {},
+    onNewChat: () -> Unit = {},
+) {
     val listState = rememberLazyListState()
     val lastAnswered = turns.count { it.answer != null }
     LaunchedEffect(turns.size, lastAnswered) {
@@ -321,6 +436,15 @@ fun AskContent(turns: List<ChatTurn>, aiConnected: Boolean, onAsk: (String) -> U
             .imePadding()
             .padding(bottom = if (keyboardOpen) 8.dp else 104.dp),
     ) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Memora AI", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground)
+            if (turns.isNotEmpty()) CircleIconButton(Icons.Rounded.Add, "New chat", onNewChat, size = 48)
+            CircleIconButton(Icons.AutoMirrored.Rounded.List, "Chat history", onHistory, size = 48)
+        }
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             state = listState,
@@ -516,5 +640,134 @@ private fun InputRow(onAsk: (String) -> Unit, modifier: Modifier) {
             },
         )
         CircleIconButton(Icons.AutoMirrored.Rounded.Send, "Send", send, size = 46, container = scheme.inverseSurface, tint = Lime)
+    }
+}
+
+@Composable
+fun ChatHistoryScreen(onBack: () -> Unit) {
+    val graph = (LocalContext.current.applicationContext as PulseApp).graph
+    val vm: AskViewModel = viewModel(factory = viewModelFactory { initializer { AskViewModel(graph) } })
+    val history by vm.history.collectAsStateWithLifecycle()
+    val undo = rememberUndo()
+    ChatHistoryContent(
+        history,
+        onBack,
+        onOpen = {
+            vm.open(it)
+            onBack()
+        },
+        onDelete = { id -> vm.delete(id) { rows -> undo("Chat deleted") { vm.restore(rows) } } },
+        onClearAll = vm::clearAll,
+    )
+}
+
+/** Plain data in, callbacks out, so tests can render it directly. */
+@Composable
+fun ChatHistoryContent(
+    chats: List<ChatSummary>,
+    onBack: () -> Unit,
+    onOpen: (Long) -> Unit,
+    onDelete: (Long) -> Unit,
+    onClearAll: () -> Unit,
+) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var confirmClear by remember { mutableStateOf(false) }
+    val zone = ZoneId.systemDefault()
+    val today = LocalDate.now(zone)
+    val shown = chats.filter { query.isBlank() || it.searchable.contains(query.trim(), ignoreCase = true) }
+    val byDay = shown.groupBy { Instant.ofEpochMilli(it.at).atZone(zone).toLocalDate() }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().statusBarsPadding().imePadding(),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item { ScreenHeader("Chat history", onBack) }
+        if (chats.isNotEmpty()) {
+            item(key = "search") {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = { Text("Search your chats") },
+                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+        when {
+            chats.isEmpty() -> item { NoteCard(null, "No chats yet. Your chats with Memora AI will show here.") }
+            shown.isEmpty() -> item { NoteCard(null, "No chats mention \"${query.trim()}\".") }
+            else -> byDay.forEach { (day, rows) ->
+                item(key = "d-$day") {
+                    SectionLabel(
+                        when (day) {
+                            today -> "Today"
+                            today.minusDays(1) -> "Yesterday"
+                            else -> day.format(DateTimeFormatter.ofPattern("EEE, d MMM", Locale.ENGLISH))
+                        },
+                        Modifier.padding(top = 6.dp),
+                    )
+                }
+                items(rows, key = { it.conversation }) { chat -> ChatHistoryRow(chat, onOpen, onDelete, Modifier.animateItem()) }
+            }
+        }
+        if (chats.isNotEmpty()) {
+            item {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    Text(
+                        "Saved on this phone until you delete them.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(onClick = { confirmClear = true }) { Text("Delete all chats") }
+                }
+            }
+        }
+    }
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            confirmButton = { TextButton(onClick = { onClearAll(); confirmClear = false }) { Text("Delete all") } },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } },
+            title = { Text("Delete all chats?") },
+            text = { Text("This removes your whole chat history from this phone. It can't be undone.") },
+        )
+    }
+}
+
+@Composable
+private fun ChatHistoryRow(chat: ChatSummary, onOpen: (Long) -> Unit, onDelete: (Long) -> Unit, modifier: Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = scheme.surface,
+        modifier = modifier.fillMaxWidth().clickable { onOpen(chat.conversation) },
+    ) {
+        Row(Modifier.padding(start = 16.dp, end = 6.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(chat.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    chat.preview,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    (if (chat.turns == 1) "1 question" else "${chat.turns} questions") + " · " + formatCaptureTime(chat.at),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
+            CircleIconButton(
+                Icons.Rounded.Close,
+                "Delete this chat",
+                { onDelete(chat.conversation) },
+                size = 48,
+                container = Color.Transparent,
+                tint = scheme.onSurfaceVariant,
+            )
+        }
     }
 }

@@ -351,7 +351,7 @@ fun SettingsContent(
                         "• Short lines from useful messages stay in Second Brain until you delete them. This includes useful lines from chats you allow, and longer messages from people you star.\n" +
                         "• The notifications-read list keeps the sender and what was saved for 7 days. It never keeps messages that had nothing useful.\n" +
                         "• General questions you type are sent to those services too. Google's free tier may use this data to improve its products, so don't type private details.\n" +
-                        "• Second Brain notes that help with a chat question are sent with it. You can turn this off in AI and email.\n" +
+                        "• Your chats are saved on this phone until you delete them. Notes and earlier chats that help with a question are sent with it. You can turn this off in AI and email.\n" +
                         "• Codes, passwords, bank alerts and muted people are never sent to them.\n" +
                         "• If you turn on email, weekly totals are sent through Resend. They name no merchants or messages.\n" +
                         "• The database is not encrypted yet. App lock guards the screens, not the stored file.",

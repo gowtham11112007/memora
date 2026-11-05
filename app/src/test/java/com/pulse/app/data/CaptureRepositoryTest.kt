@@ -267,6 +267,8 @@ class CaptureRepositoryTest {
             migrated.noteDao().insert(Note(text = "n", kind = "NOTE", createdAt = 1, source = "manual"))
             assertEquals(1, migrated.noteDao().all().size)
             assertEquals("NONE", migrated.reminderDao().all().single().repeat)
+            migrated.chatDao().insert(ChatEntry(conversation = 1, question = "q", answer = "a", source = "AI", at = 1))
+            assertEquals("q", migrated.chatDao().latest()?.question)
             migrated.todoDao().insert(Todo(text = "t", createdAt = 1, source = "manual"))
             migrated.contactRuleDao().upsert(ContactRule("priya", "Priya", true))
             migrated.activityDao().insert(ActivityEntry(packageName = "gpay", title = "x", outcome = "STORE", at = 1))
@@ -277,7 +279,7 @@ class CaptureRepositoryTest {
     }
 
     private fun open(path: String) = Room.databaseBuilder(context, PulseDatabase::class.java, path)
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
         .allowMainThreadQueries()
         .build()
 

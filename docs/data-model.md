@@ -1,4 +1,6 @@
-# Data model (Room, database version 7)
+# Data model (Room, database version 8)
+
+`MIGRATION_7_8` adds `chat_turn`: `id`, `conversation` (indexed), `question`, `answer`, `source`, `notes`, `at` (indexed). Saved chats, kept until deleted, up to 500 turns.
 
 `MIGRATION_6_7` adds `task.origin`, `todo.origin` and `activity.detail`: who a suggestion came from, and what a notification became.
 

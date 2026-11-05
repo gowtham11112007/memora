@@ -174,6 +174,14 @@ class LlmClientTest {
         fromNotes("Do I have any note about a car service?")
         fromNotes("Explain how UPI works")
 
+        val chats = listOf(com.pulse.app.domain.PastTurn(9, "What is the capital of Australia?", "Canberra.", savedAt - 86_400_000))
+        val question = "What did I ask you yesterday?"
+        val withMemory = "Answer in one or two short sentences. Today is THURSDAY, 2026-11-05." +
+            com.pulse.app.domain.ChatMemory.section(com.pulse.app.domain.ChatMemory.pick(chats, question), zone)
+        val recalled = (router.answer(router.chatModels(), withMemory, listOf(LlmMessage("user", question))) as LlmResult.Reply).text
+        println("LIVE memory => $recalled")
+        assertTrue(recalled.contains("Australia", ignoreCase = true) || recalled.contains("Canberra", ignoreCase = true))
+
         started = System.currentTimeMillis()
         val tanglish = SmartReader.read(listOf(GroqClient(com.pulse.app.BuildConfig.GROQ_KEY, jsonOnly = true)), "Karthik", "nalaiku exam iruku da", now)
         println("LIVE Groq backup ${System.currentTimeMillis() - started}ms: $tanglish")

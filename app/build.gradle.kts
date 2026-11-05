@@ -16,12 +16,13 @@ android {
         applicationId = "com.pulse.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
         // The key lives in secrets.properties, which Git ignores, so it's in the APK but never in the repo.
         val secrets = Properties()
         rootProject.file("secrets.properties").takeIf { it.exists() }?.inputStream()?.use { secrets.load(it) }
         buildConfigField("String", "AI_KEY", "\"${secrets.getProperty("GEMINI_API_KEY", "")}\"")
+        buildConfigField("String", "GROQ_KEY", "\"${secrets.getProperty("GROQ_API_KEY", "")}\"")
     }
 
     buildTypes {
@@ -52,6 +53,11 @@ android {
             isIncludeAndroidResources = true
             all { test ->
                 // PNGs are only written with: ./gradlew testDebugUnitTest -Pshots
+                // Calls the real AI services. Only runs with: ./gradlew testDebugUnitTest -Plive
+                if (project.hasProperty("live")) {
+                    test.systemProperty("memora.live", "true")
+                    test.outputs.upToDateWhen { false }
+                }
                 if (project.hasProperty("shots")) {
                     test.systemProperty("roborazzi.test.record", "true")
                     test.outputs.upToDateWhen { false }

@@ -78,7 +78,7 @@ class LlmClientTest {
     fun `smart reading sends the message with today's date and reads the reply`() {
         reply = """{"candidates":[{"content":{"parts":[{"text":"{\"useful\":true,\"kind\":\"DELIVERY\",\"summary\":\"Parcel tomorrow\",\"remind_at\":\"2026-11-05T09:00\",\"todo\":null}"}],"role":"model"}}]}"""
         val now = java.time.LocalDateTime.of(2026, 11, 4, 14, 0)
-        val reading = SmartReader.read("test-key", "Rahul", "parcel tmrw", now, base)
+        val reading = SmartReader.read(listOf(GeminiClient("test-key", base)), "Rahul", "parcel tmrw", now)
         assertEquals("Parcel tomorrow", reading?.summary)
         assertEquals(java.time.LocalDateTime.of(2026, 11, 5, 9, 0), reading?.remindAt)
         assertTrue(seenBody.contains("parcel tmrw"))
@@ -87,15 +87,75 @@ class LlmClientTest {
     }
 
     @Test
-    fun `smart reading gives up quietly when Gemini fails`() {
+    fun `smart reading gives up quietly when every AI fails`() {
         statuses += "401 Unauthorized"
-        assertNull(SmartReader.read("bad-key", "Rahul", "parcel tmrw", java.time.LocalDateTime.of(2026, 11, 4, 14, 0), base))
+        assertNull(SmartReader.read(listOf(GeminiClient("bad-key", base)), "Rahul", "parcel tmrw", java.time.LocalDateTime.of(2026, 11, 4, 14, 0)))
+    }
+
+    @Test
+    fun `smart reading tries the next AI when one fails or makes no sense`() {
+        val now = java.time.LocalDateTime.of(2026, 11, 4, 14, 0)
+        val down = AiModel { _, _ -> LlmResult.Failed("busy") }
+        val confused = AiModel { _, _ -> LlmResult.Reply("Sorry, I can't help with that") }
+        val good = AiModel { _, _ -> LlmResult.Reply("""{"useful":true,"kind":"NOTE","summary":"A plan"}""") }
+        assertEquals("A plan", SmartReader.read(listOf(down, confused, good), "Rahul", "the plan", now)?.summary)
+    }
+
+    @Test
+    fun `Groq gets an OpenAI style request and its answer is read`() {
+        reply = """{"choices":[{"message":{"role":"assistant","content":"<think>hmm</think> Paris."}}]}"""
+        val result = GroqClient("groq-key", base, "test-model", jsonOnly = true)
+            .chat("Be brief.", listOf(LlmMessage("user", "Hi"), LlmMessage("model", "Hello"), LlmMessage("user", "Capital of France?")))
+        assertEquals(LlmResult.Reply("Paris."), result)
+        assertEquals("/openai/v1/chat/completions", paths.single())
+        assertEquals("Bearer groq-key", seenBearer)
+        val body = JSONObject(seenBody)
+        assertEquals("test-model", body.getString("model"))
+        assertEquals("json_object", body.getJSONObject("response_format").getString("type"))
+        val sent = body.getJSONArray("messages")
+        assertEquals("system", sent.getJSONObject(0).getString("role"))
+        assertEquals("assistant", sent.getJSONObject(2).getString("role"))
+    }
+
+    @Test
+    fun `Groq failures explain themselves instead of crashing`() {
+        statuses += "429 Too Many Requests"
+        assertTrue((GroqClient("k", base).chat("s", listOf(LlmMessage("user", "q"))) as LlmResult.Failed).reason.contains("busy"))
+        reply = """{"choices":[]}"""
+        assertTrue((GroqClient("k", base).chat("s", listOf(LlmMessage("user", "q"))) as LlmResult.Failed).reason.contains("didn't get"))
+    }
+
+    /** Runs the app's own code against the real services. Only with: ./gradlew testDebugUnitTest -Plive */
+    @Test
+    fun `live - chat is quick and reading understands a real message`() {
+        org.junit.Assume.assumeTrue(System.getProperty("memora.live") == "true")
+        val router = AiRouter(AiSettings(androidx.test.core.app.ApplicationProvider.getApplicationContext()))
+        val now = java.time.LocalDateTime.of(2026, 11, 5, 10, 5)
+
+        var started = System.currentTimeMillis()
+        val chat = router.answer(router.chatModels(), "Answer in one short sentence.", listOf(LlmMessage("user", "What is UPI?")))
+        val chatMs = System.currentTimeMillis() - started
+        println("LIVE chat ${chatMs}ms: $chat")
+        assertTrue(chat is LlmResult.Reply)
+        assertTrue("chat took ${chatMs}ms", chatMs < 8_000)
+
+        started = System.currentTimeMillis()
+        val message = "Heyy gowtham your delivery is arriving Tommorow morning 9.00am.your order is out of delivery"
+        val delivery = SmartReader.read(router.readingModels(), "Rahul", message, now)
+        println("LIVE reading ${System.currentTimeMillis() - started}ms: $delivery")
+        assertEquals(com.pulse.app.domain.NoteKind.DELIVERY, delivery?.kind)
+        assertEquals(java.time.LocalDateTime.of(2026, 11, 6, 9, 0), delivery?.remindAt)
+
+        started = System.currentTimeMillis()
+        val tanglish = SmartReader.read(listOf(GroqClient(com.pulse.app.BuildConfig.GROQ_KEY, jsonOnly = true)), "Karthik", "nalaiku exam iruku da", now)
+        println("LIVE Groq backup ${System.currentTimeMillis() - started}ms: $tanglish")
+        assertTrue(tanglish != null)
     }
 
     @Test
     fun `sends the Gemini request and joins the answer parts`() {
         assertEquals(LlmResult.Reply("Paris."), ask())
-        assertEquals("/v1beta/models/gemini-flash-latest:generateContent", paths.single())
+        assertEquals("/v1beta/models/gemini-flash-lite-latest:generateContent", paths.single())
         assertEquals("test-key", seenKey)
         val body = JSONObject(seenBody)
         assertEquals("Be brief.", body.getJSONObject("systemInstruction").getJSONArray("parts").getJSONObject(0).getString("text"))
@@ -109,7 +169,7 @@ class LlmClientTest {
         statuses += "503 Service Unavailable"
         assertEquals(LlmResult.Reply("Paris."), ask())
         assertEquals(
-            listOf("/v1beta/models/gemini-flash-latest:generateContent", "/v1beta/models/gemini-flash-lite-latest:generateContent"),
+            listOf("/v1beta/models/gemini-flash-lite-latest:generateContent", "/v1beta/models/gemini-flash-latest:generateContent"),
             paths.toList(),
         )
     }

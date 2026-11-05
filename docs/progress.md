@@ -14,6 +14,7 @@
 - **Version 0.2.0:** exact-alarm reminders with a backup job, needs-your-answer card and list, new-items count on the bell, optional App lock, more student and meet-up date words, APK named `Memora.apk`. Tested on the Mac only.
 - **Payment accuracy:** one payment reported by SMS and several apps counts once, using the bank reference, time and name. Sender names read from more wordings, including a name alone in the title. The balance form opens with saved values and changes only what was edited. Category circles removed from Home. Tested on the Mac only, with written samples.
 - **Smart reading and Memora AI:** Gemini reads messages from allowed apps and answers chat in short replies, using a key built from the gitignored `secrets.properties`. On by default, with a switch. The request and reply format worked live from the Mac. It has not run on a phone.
+- **Two AI services:** Groq answers chat first and Gemini reads messages first, chosen by testing both on 11 sample messages (Groq's Qwen 9 of 11 at 0.5 s, Gemini Lite 10 of 11 at 7 s). This is a small sample, not a measure of real accuracy. Run `./gradlew testDebugUnitTest -Plive` to test the real services.
 - **Sent money:** bank alerts are no longer thrown away because of a safety note or advert at the end, and more wordings are read. Tested with written samples, not the user's real SMS.
 - **Allowed apps:** redesigned, with a pinned search box and filters.
 - **Part of milestone 6:** delete all data, pause reading, CSV export and a privacy summary.

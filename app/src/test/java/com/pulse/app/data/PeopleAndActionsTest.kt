@@ -182,9 +182,21 @@ class PeopleAndActionsTest {
     }
 
     @Test
+    fun `the AI can't lose a clear date or a useful message the rules found`() = runBlocking {
+        geminiReply = AiReading(null, null, null, null)
+        assertEquals(CaptureDecision.STORE, smartRepo().capture(WHATSAPP, "Rahul", "Exam tomorrow at 9 am", clock))
+        assertEquals(LocalDateTime.of(2026, 11, 5, 9, 0).toInstant(zone).toEpochMilli(), prompted.single().dueAt)
+        assertEquals("EVENT", db.noteDao().all().single().kind)
+
+        geminiReply = AiReading(com.pulse.app.domain.NoteKind.NOTE, "A short summary", null, null)
+        smartRepo().capture(WHATSAPP, "Rahul", "Viva on 10 Nov at 10 am", clock)
+        assertEquals("a reading with no date keeps the rule's date", 2, prompted.size)
+    }
+
+    @Test
     fun `smart reading can say a message is not useful, and can offer a to-do`() = runBlocking {
         geminiReply = AiReading(null, null, null, null)
-        assertEquals(CaptureDecision.NOTHING_USEFUL, smartRepo().capture(WHATSAPP, "Rahul", "Your parcel joke was funny", clock))
+        assertEquals(CaptureDecision.NOTHING_USEFUL, smartRepo().capture(WHATSAPP, "Rahul", "That joke was so funny machi", clock))
         assertTrue(db.noteDao().all().isEmpty())
 
         geminiReply = AiReading(com.pulse.app.domain.NoteKind.NOTE, "Rahul needs the charger", null, "Bring Rahul's charger")

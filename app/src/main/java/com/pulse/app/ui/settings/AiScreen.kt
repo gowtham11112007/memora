@@ -148,8 +148,8 @@ fun AiContent(
         ToggleRow(
             "Smart reading",
             if (ai.isSet || builtInKey) {
-                "Understands messages from apps you allow. They're sent to Google's AI service, and free-tier data may be used " +
-                    "to improve Google's products. Codes, passwords, bank alerts and muted people are never sent."
+                "Understands messages from apps you allow. They're sent to cloud AI services from Google and Groq. Google's free " +
+                    "tier may use this data to improve its products. Codes, passwords, bank alerts and muted people are never sent."
             } else {
                 "Add an AI key below first."
             },

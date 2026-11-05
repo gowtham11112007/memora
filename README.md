@@ -12,8 +12,8 @@
 ## Privacy
 - Only apps you turn on are read, and every app starts off.
 - OTPs, passwords, CVVs and PINs are dropped before anything is saved, and long reference numbers are masked.
-- Records stay on the phone. General questions you type go to Gemini, and so do messages from allowed apps while Smart reading is on. Codes, bank alerts and muted people are never sent.
-- To build with AI, put `GEMINI_API_KEY=your_key` in `secrets.properties`. Git ignores this file.
+- Records stay on the phone. General questions you type go to Groq or Gemini, and so do messages from allowed apps while Smart reading is on. Codes, bank alerts and muted people are never sent.
+- To build with AI, put `GEMINI_API_KEY=your_key` and `GROQ_API_KEY=your_key` in `secrets.properties`. Git ignores this file.
 - App lock is optional, and uses your phone's screen lock. Not built yet: database encryption. See [docs/privacy.md](docs/privacy.md).
 
 ## Set up

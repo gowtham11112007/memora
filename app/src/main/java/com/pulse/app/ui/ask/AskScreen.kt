@@ -59,7 +59,8 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.pulse.app.PulseApp
 import com.pulse.app.PulseGraph
-import com.pulse.app.data.GeminiClient
+import com.pulse.app.data.AiReading
+import com.pulse.app.data.SmartReader
 import com.pulse.app.data.LlmMessage
 import com.pulse.app.data.LlmResult
 import com.pulse.app.data.MoneyRecord
@@ -92,8 +93,9 @@ import com.pulse.app.ui.theme.Ink
 import com.pulse.app.ui.theme.Lime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -111,16 +113,23 @@ data class ChatTurn(
 private const val SYSTEM_PROMPT =
     "You are Memora, a helpful assistant inside a personal Android app used in India. " +
         "Answer any question directly in one or two short sentences, in plain text without markdown. Give more only if asked. " +
-        "Don't bring up which company or model powers you. If the user asks, say you are Memora's assistant, running on Google's AI. " +
+        "You can't set reminders, save notes or change anything in the app, so never say you did. If asked, tell the user to say: remind me to call mom tomorrow at 5 pm. " +
+        "Don't bring up which company or model powers you. If the user asks, say you are Memora's assistant, running on cloud AI services from Google and Groq. " +
         "You cannot see the user's records unless they are given in this message, so never invent their amounts or dates."
 
 /** The conversation lives in memory only and disappears when the app closes. */
 class AskViewModel(private val graph: PulseGraph) : ViewModel() {
     val turns = MutableStateFlow<List<ChatTurn>>(emptyList())
-    val aiConnected = MutableStateFlow(graph.aiSettings.load().isSet)
+    val aiConnected = MutableStateFlow(graph.ai.hasAi())
 
     fun refresh() {
-        aiConnected.value = graph.aiSettings.load().isSet
+        aiConnected.value = graph.ai.hasAi()
+    }
+
+    /** A slow network call can't leave the chat loading forever: the answer gives up, even if the call hasn't. */
+    private suspend fun <T> withinLimit(fallback: T, call: () -> T): T {
+        val running = viewModelScope.async(Dispatchers.IO) { runCatching(call).getOrDefault(fallback) }
+        return withTimeoutOrNull(WAIT_LIMIT_MS) { running.await() } ?: fallback
     }
 
     fun ask(question: String) {
@@ -160,9 +169,9 @@ class AskViewModel(private val graph: PulseGraph) : ViewModel() {
                 finish(id, AskAnswer(it), AnswerFrom.OFFLINE)
                 return@launch
             }
-            // 4. Everything else goes to Gemini, if the user added a key.
+            // 4. Everything else goes to the AI services.
             val config = graph.aiSettings.load()
-            if (!config.isSet) {
+            if (!graph.ai.hasAi()) {
                 finish(
                     id,
                     AskAnswer("I can't answer that one yet. Ask me about your money, reminders or notes."),
@@ -172,8 +181,9 @@ class AskViewModel(private val graph: PulseGraph) : ViewModel() {
             }
             val totals = if (config.shareTotals) AskEngine.monthTotalsLine(records, rules, today, zone) else null
             val system = if (totals != null) "$SYSTEM_PROMPT $totals" else SYSTEM_PROMPT
-            val result = withContext(Dispatchers.IO) { GeminiClient(config.apiKey).chat(system, buildMessages(text)) }
-            when (result) {
+            val messages = buildMessages(text)
+            val tooSlow: LlmResult = LlmResult.Failed("That's taking too long. Check your internet and try again.")
+            when (val result = withinLimit(tooSlow) { graph.ai.answer(graph.ai.chatModels(), system, messages) }) {
                 is LlmResult.Reply -> finish(id, AskAnswer(result.text.replace("**", "")), AnswerFrom.AI)
                 is LlmResult.Failed -> finish(id, AskAnswer(result.reason), AnswerFrom.NOTICE)
             }
@@ -197,12 +207,20 @@ class AskViewModel(private val graph: PulseGraph) : ViewModel() {
             }
         }
         is ChatCommand.Remind -> {
-            val deadline = DeadlineExtractor.extract(null, command.text, LocalDateTime.now())
-            if (deadline == null) {
+            val now = LocalDateTime.now()
+            val byRule = DeadlineExtractor.extract(null, command.text, now)?.dueAt
+            // Phrases like "in 2 hours" or "at 5 pm" have no date the rules can read, so the AI works it out.
+            val byAi = if (byRule == null && graph.ai.hasAi()) {
+                withinLimit<AiReading?>(null) { SmartReader.read(graph.ai.readingModels(), "Me", command.text, now) }
+            } else {
+                null
+            }
+            val due = byRule ?: byAi?.remindAt
+            if (due == null) {
                 AskAnswer("When should I remind you? Try \"remind me to pay rent tomorrow at 9 am\".")
             } else {
-                val title = ChatCommands.reminderTitle(command.text)
-                val dueAt = deadline.dueAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                val title = byAi?.summary ?: ChatCommands.reminderTitle(command.text)
+                val dueAt = due.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
                 val reminder = Reminder(title = title, dueAt = dueAt, confidence = 1.0, confirmed = true, source = MoneyRecord.MANUAL)
                 graph.reminders.schedule(reminder.copy(id = graph.db.reminderDao().insert(reminder)))
                 AskAnswer(
@@ -257,6 +275,7 @@ class AskViewModel(private val graph: PulseGraph) : ViewModel() {
 
     private companion object {
         const val HISTORY_TURNS = 4
+        const val WAIT_LIMIT_MS = 25_000L
     }
 }
 

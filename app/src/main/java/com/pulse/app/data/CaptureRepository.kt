@@ -46,8 +46,8 @@ fun isPersonalApp(pkg: String) = pkg in MESSAGING_PACKAGES || pkg in CHAT_PACKAG
 /**
  * The single door every notification goes through (real or simulated).
  * Order: allow-list, then privacy, then people rules, then organise. Only useful messages are kept,
- * and only masked text reaches the disk. Everything runs on the phone, unless the user turned on
- * Smart reading, and then only what [readSmartly] lets through goes to Gemini.
+ * and only masked text reaches the disk. Everything runs on the phone, unless Smart reading is on,
+ * and then only what [readSmartly] lets through goes to the AI services.
  */
 class CaptureRepository(
     private val db: PulseDatabase,
@@ -152,25 +152,17 @@ class CaptureRepository(
         val bankAlert = !personal || ExpenseExtractor.looksLikeBankAlert(text)
         if (bankAlert) ExpenseExtractor.findBalance(text)?.let { onBalanceSeen(it, t) }
         val money = ExpenseExtractor.extract(title, text, titleMayBePerson = !personal)?.takeIf { bankAlert }
-        // Gemini's reading replaces the word rules when there is one. Without one, the rules do the same job.
+        // The AI adds understanding and the word rules keep working, so a miss by the AI never loses a clear date.
         val summary = reading?.summary
         // The user turned these apps on to be read, and a detected date or task only asks first.
-        val deadline = if (reading != null) {
-            reading.remindAt?.let { Deadline((summary ?: BrainClassifier.shorten(text)).take(MAX_REMINDER_TITLE), it, AI_CONFIDENCE) }
-        } else {
-            extractDeadline(title, text, t)
-        }
-        val todoText = when {
-            money != null || deadline != null -> null
-            reading != null -> reading.todo
-            else -> TaskPredictor.suggestion(text)
-        }
+        val deadline = reading?.remindAt?.let { Deadline((summary ?: BrainClassifier.shorten(text)).take(MAX_REMINDER_TITLE), it, AI_CONFIDENCE) }
+            ?: extractDeadline(title, text, t)
+        val todoText = if (money != null || deadline != null) null else reading?.todo ?: TaskPredictor.suggestion(text)
         // Useful messages from any allowed app go to Second Brain. Everyday chatter is dropped.
         val kind = when {
             money != null -> null
             starred -> NoteKind.PEOPLE.takeIf { text.length >= MIN_STARRED_NOTE }
-            reading != null -> reading.kind
-            else -> BrainClassifier.classify("$title. $text")
+            else -> reading?.kind ?: BrainClassifier.classify("$title. $text")
         }
         if (money == null && deadline == null && kind == null && todoText == null) return CaptureDecision.NOTHING_USEFUL
 

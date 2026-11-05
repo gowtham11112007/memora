@@ -3,6 +3,7 @@ package com.pulse.app
 import android.app.Application
 import android.content.Context
 import androidx.room.Room
+import com.pulse.app.data.AiRouter
 import com.pulse.app.data.AiSettings
 import com.pulse.app.data.CaptureRepository
 import com.pulse.app.data.DemoData
@@ -31,6 +32,7 @@ class PulseGraph(val appContext: Context, val demo: Boolean = false) {
             .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .build()
     val aiSettings = AiSettings(appContext)
+    val ai = AiRouter(aiSettings)
     val moneyPrefs = MoneyPrefs(appContext, demo)
     val reminders = ReminderScheduler(appContext, demo)
     val captureRepository = CaptureRepository(
@@ -44,8 +46,8 @@ class PulseGraph(val appContext: Context, val demo: Boolean = false) {
         onRecordSaved = { BudgetAlert.check(this) },
         autoConfirmSure = aiSettings::isAutoReminders,
         onTodoSuggested = { ReminderPrompt.showTodo(appContext, it) },
-        smartReadingOn = { aiSettings.isSmartReading() && aiSettings.load().isSet },
-        smartReader = { sender, text, at -> SmartReader.read(aiSettings.load().apiKey, sender, text, at) },
+        smartReadingOn = { aiSettings.isSmartReading() && ai.hasAi() },
+        smartReader = { sender, text, at -> SmartReader.read(ai.readingModels(), sender, text, at) },
     )
 }
 

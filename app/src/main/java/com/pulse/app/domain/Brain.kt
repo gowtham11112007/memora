@@ -84,7 +84,8 @@ sealed interface ChatCommand {
 object ChatCommands {
     private val ic = setOf(RegexOption.IGNORE_CASE)
     private val remember = Regex("""^(?:please\s+)?(?:remember|note down|note|save)(?:\s+that)?[:\s]+(.+)$""", ic)
-    private val remind = Regex("""^(?:please\s+)?remind me\b.+$""", ic)
+    private const val REMIND_WORDS = """(?:please\s+)?(?:remind me|(?:set|add|create|make|new)\s+(?:a\s+|an\s+|my\s+)?(?:reminder|alarm))"""
+    private val remind = Regex("""^$REMIND_WORDS\b.+$""", ic)
     private val addTodo = Regex("""^(?:add\s+(.+?)\s+to\s+(?:my\s+)?(?:to-?do|tasks?)(?:\s+list)?|to-?do[:\s]+(.+))$""", ic)
     private val listTodos = Regex("""\b(?:show|what(?:'s| is)(?: on)?|list)\s+(?:on\s+)?my\s+(?:to-?dos?|tasks?)\b|^(?:my\s+)?to-?dos?(?:\s+list)?\??$""", ic)
     private val find = Regex(
@@ -104,7 +105,7 @@ object ChatCommands {
 
     fun reminderTitle(text: String): String =
         text.trim()
-            .replace(Regex("""^(?:please\s+)?remind me(?:\s+(?:to|about))?\s*""", ic), "")
+            .replace(Regex("""^$REMIND_WORDS(?:\s+(?:to|about|for|that))?\s*""", ic), "")
             .replaceFirstChar { it.uppercase() }
 }
 

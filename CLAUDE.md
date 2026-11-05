@@ -4,9 +4,9 @@ extracts expenses/deadlines, stores locally, answers questions from stored recor
 Target device: Nothing Phone (3a), Android 16. minSdk 26, targetSdk 35, package com.pulse.app.
 
 ## Rules
-- Records never leave the device. Notification text leaves only through CaptureRepository.readSmartly while Smart reading is on: masked, and never codes, muted people or money messages. Screens may say "Memora AI", but the privacy text must keep saying this goes to Google.
-- INTERNET is only for Gemini chat, Smart reading and Resend email. Chat sends what the user types, plus category totals only if they opt in.
-- Record questions, chat commands and offline answers run on the phone. The built-in key lives only in the gitignored secrets.properties, never in code or Git.
+- Records never leave the device. Notification text leaves only through CaptureRepository.readSmartly while Smart reading is on: masked, and never codes, muted people or money messages. Screens may say "Memora AI", but the privacy text must keep saying this goes to Google and Groq.
+- INTERNET is only for AI chat, Smart reading and Resend email. Chat sends what the user types, plus category totals only if they opt in.
+- Record questions, chat commands and offline answers run on the phone. The built-in keys live only in the gitignored secrets.properties, never in code or Git. The AI adds to the word rules and never replaces them, and money is decided by rules alone.
 - Detected reminders and to-dos stay unconfirmed until the user says yes on the popup. Only exception: the opt-in Automatic reminders setting, for clear dates from non-chat apps, with Undo.
 - Allowed-apps only (default none). Drop OTP/password/CVV/PIN messages before storing.
 - Rules/regex first, LLM later and optional. Never let an LLM write or run raw SQL.

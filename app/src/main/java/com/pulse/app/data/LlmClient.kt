@@ -30,7 +30,7 @@ class AiSettings(context: Context) {
     /** Only what the user typed, for the settings page. */
     fun loadTyped() = AiConfig(prefs.getString("key", "").orEmpty(), prefs.getBoolean("totals", false))
 
-    fun hasBuiltInKey() = BuildConfig.AI_KEY.isNotBlank()
+    fun hasBuiltInKey() = BuildConfig.AI_KEY.isNotBlank() || BuildConfig.GROQ_KEY.isNotBlank()
 
     fun save(config: AiConfig) {
         prefs.edit().putString("key", config.apiKey.trim()).putBoolean("totals", config.shareTotals).apply()
@@ -77,16 +77,102 @@ sealed interface LlmResult {
     data class Failed(val reason: String) : LlmResult
 }
 
+/** Anything that can answer a prompt. Blocking, so call it from Dispatchers.IO. */
+fun interface AiModel {
+    fun chat(system: String, messages: List<LlmMessage>): LlmResult
+}
+
+/**
+ * Decides which AI does which job, based on running them on the same real-style messages:
+ * Groq's Qwen answered in about 0.5 s and got 9 of 11 right. Gemini Flash Lite took about 7 s and got 10 of 11,
+ * including Tanglish and a message trying to give it orders.
+ */
+class AiRouter(private val settings: AiSettings) {
+    private val gemini get() = settings.load().apiKey
+    private val groq get() = BuildConfig.GROQ_KEY
+
+    fun hasAi() = gemini.isNotBlank() || groq.isNotBlank()
+
+    /** Someone is waiting, so speed comes first. */
+    fun chatModels(): List<AiModel> = buildList {
+        if (groq.isNotBlank()) add(GroqClient(groq))
+        if (gemini.isNotBlank()) add(GeminiClient(gemini, readTimeoutMs = CHAT_TIMEOUT_MS))
+    }
+
+    /** This runs in the background, so a few extra seconds is worth a better reading. */
+    fun readingModels(): List<AiModel> = buildList {
+        if (gemini.isNotBlank()) add(GeminiClient(gemini, readTimeoutMs = READING_TIMEOUT_MS))
+        if (groq.isNotBlank()) add(GroqClient(groq, jsonOnly = true))
+    }
+
+    /** Tries each in turn, and returns the last failure if none can answer. */
+    fun answer(models: List<AiModel>, system: String, messages: List<LlmMessage>): LlmResult {
+        var last: LlmResult = LlmResult.Failed("I can't answer that right now. Try again later.")
+        for (model in models) {
+            last = model.chat(system, messages)
+            if (last is LlmResult.Reply) return last
+        }
+        return last
+    }
+
+    private companion object {
+        const val CHAT_TIMEOUT_MS = 12_000
+        const val READING_TIMEOUT_MS = 15_000
+    }
+}
+
+/** Groq runs open models very fast, using the same request shape as OpenAI. */
+class GroqClient(
+    private val apiKey: String,
+    private val baseUrl: String = "https://api.groq.com",
+    private val model: String = "qwen/qwen3.8-27b",
+    private val jsonOnly: Boolean = false,
+    private val readTimeoutMs: Int = 10_000,
+) : AiModel {
+    override fun chat(system: String, messages: List<LlmMessage>): LlmResult {
+        val all = JSONArray().put(JSONObject().put("role", "system").put("content", system))
+        messages.forEach { all.put(JSONObject().put("role", if (it.role == "model") "assistant" else it.role).put("content", it.content)) }
+        val body = JSONObject().put("model", model).put("messages", all).put("temperature", 0.2).put("max_tokens", 500)
+        if (jsonOnly) body.put("response_format", JSONObject().put("type", "json_object"))
+        val connection = URL("$baseUrl/openai/v1/chat/completions").openConnection() as HttpURLConnection
+        return try {
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 8_000
+            connection.readTimeout = readTimeoutMs
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("Authorization", "Bearer $apiKey")
+            connection.setRequestProperty("User-Agent", "Memora")
+            connection.outputStream.use { it.write(body.toString().toByteArray()) }
+            if (connection.responseCode !in 200..299) return LlmResult.Failed("I'm busy right now. Try again in a minute.")
+            val reply = connection.inputStream.bufferedReader().use { it.readText() }
+            val text = runCatching {
+                JSONObject(reply).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
+            }.getOrNull()?.replace(THINKING, "")?.trim()
+            if (text.isNullOrEmpty()) LlmResult.Failed("I didn't get an answer. Try again.") else LlmResult.Reply(text)
+        } catch (e: IOException) {
+            LlmResult.Failed("I can't reach the internet. Check your connection and try again.")
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private companion object {
+        // Some open models write out their reasoning first.
+        val THINKING = Regex("""<think>.*?</think>""", RegexOption.DOT_MATCHES_ALL)
+    }
+}
+
 /**
  * Calls Google's Gemini API directly from the phone. Blocking, so call it from Dispatchers.IO.
- * If a model is overloaded, it tries the lighter one. Callers send only what the user typed.
+ * If a model is overloaded, it tries the next one.
  */
 class GeminiClient(
     private val apiKey: String,
     private val baseUrl: String = "https://generativelanguage.googleapis.com",
-    private val readTimeoutMs: Int = 60_000,
-) {
-    fun chat(system: String, messages: List<LlmMessage>): LlmResult {
+    private val readTimeoutMs: Int = 20_000,
+) : AiModel {
+    override fun chat(system: String, messages: List<LlmMessage>): LlmResult {
         var last: LlmResult = LlmResult.Failed(BUSY)
         for (model in MODELS) {
             val (code, body) = try {
@@ -107,7 +193,7 @@ class GeminiClient(
         val connection = URL("$baseUrl/v1beta/models/$model:generateContent").openConnection() as HttpURLConnection
         try {
             connection.requestMethod = "POST"
-            connection.connectTimeout = 10_000
+            connection.connectTimeout = 8_000
             connection.readTimeout = readTimeoutMs
             connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/json")
@@ -146,7 +232,8 @@ class GeminiClient(
     }
 
     private companion object {
-        val MODELS = listOf("gemini-flash-latest", "gemini-flash-lite-latest")
+        // The lighter model goes first: the full one took about 70 s when busy, and that looked like endless loading.
+        val MODELS = listOf("gemini-flash-lite-latest", "gemini-flash-latest")
         const val BUSY = "I'm busy right now. Try again in a minute."
     }
 }
@@ -160,7 +247,6 @@ data class AiReading(val kind: NoteKind?, val summary: String?, val remindAt: Lo
  * checked fields. It can suggest a note, a reminder or a to-do, and reminders and to-dos still ask first.
  */
 object SmartReader {
-    private const val TIMEOUT_MS = 15_000
     private const val MAX_LINE = 120
     private const val FARTHEST_YEARS = 2L
 
@@ -181,13 +267,14 @@ object SmartReader {
         "Now: ${now.dayOfWeek}, ${now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"))}\n" +
             "Sender: $sender\nNotification: \"\"\"$text\"\"\""
 
-    /** Blocking. Returns null if Gemini can't help, so the word rules take over. */
-    fun read(apiKey: String, sender: String, text: String, now: LocalDateTime, baseUrl: String? = null): AiReading? {
-        val client = if (baseUrl != null) GeminiClient(apiKey, baseUrl, TIMEOUT_MS) else GeminiClient(apiKey, readTimeoutMs = TIMEOUT_MS)
-        return when (val result = client.chat(SYSTEM, listOf(LlmMessage("user", prompt(sender, text, now))))) {
-            is LlmResult.Reply -> parse(result.text, now)
-            is LlmResult.Failed -> null
+    /** Blocking. Tries each model until one gives a reply it can use. Null means the word rules are on their own. */
+    fun read(models: List<AiModel>, sender: String, text: String, now: LocalDateTime): AiReading? {
+        val question = listOf(LlmMessage("user", prompt(sender, text, now)))
+        for (model in models) {
+            val result = model.chat(SYSTEM, question)
+            if (result is LlmResult.Reply) parse(result.text, now)?.let { return it }
         }
+        return null
     }
 
     /** Null means the reply couldn't be understood. Anything odd in a field drops that field alone. */

@@ -16,6 +16,22 @@ class SmartTest {
     private data class Person(val name: String)
 
     @org.junit.Test
+    fun `chat understands every common way of asking for a reminder`() {
+        listOf(
+            "Set a reminder to pay rent tomorrow at 9 am" to "Pay rent tomorrow at 9 am",
+            "set reminder for exam on Friday" to "Exam on Friday",
+            "Add a reminder to call mom at 5 pm" to "Call mom at 5 pm",
+            "please remind me to drink water in 2 hours" to "Drink water in 2 hours",
+            "Create a reminder about the bill on 12 Nov" to "The bill on 12 Nov",
+            "set an alarm for 6 am tomorrow" to "6 am tomorrow",
+        ).forEach { (said, title) ->
+            assertEquals(said, ChatCommand.Remind(said), ChatCommands.parse(said))
+            assertEquals(title, ChatCommands.reminderTitle(said))
+        }
+        assertEquals(null, ChatCommands.parse("How do reminders work?"))
+    }
+
+    @org.junit.Test
     fun `dates survive typing mistakes, and times read in every style`() {
         val now = java.time.LocalDateTime.of(2026, 11, 4, 14, 0)
         val due = { text: String -> DeadlineExtractor.extract(null, text, now)?.dueAt }

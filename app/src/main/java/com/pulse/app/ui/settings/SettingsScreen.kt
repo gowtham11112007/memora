@@ -341,15 +341,15 @@ fun SettingsContent(
             title = { Text("Your privacy") },
             text = {
                 Text(
-                    "• Your records stay on this phone. While Smart reading is on, messages from apps you allow are sent to Google's AI service. You can turn it off in AI and email.\n" +
+                    "• Your records stay on this phone. While Smart reading is on, messages from apps you allow are sent to cloud AI services from Google and Groq. You can turn it off in AI and email.\n" +
                         "• Only apps you turn on are read.\n" +
                         "• OTPs, passwords, CVVs and PINs are dropped before anything is saved.\n" +
                         "• Long reference numbers are masked.\n" +
                         "• Message text is deleted after 24 hours.\n" +
                         "• Short lines from useful messages stay in Second Brain until you delete them. This includes useful lines from chats you allow, and longer messages from people you star.\n" +
                         "• The notifications-read list keeps sender names, never messages, for 7 days.\n" +
-                        "• General questions you type are sent to Google's AI service too. Free-tier data may be used to improve Google's products, so don't type private details.\n" +
-                        "• Codes, passwords, bank alerts and muted people are never sent to it.\n" +
+                        "• General questions you type are sent to those services too. Google's free tier may use this data to improve its products, so don't type private details.\n" +
+                        "• Codes, passwords, bank alerts and muted people are never sent to them.\n" +
                         "• If you turn on email, weekly totals are sent through Resend. They name no merchants or messages.\n" +
                         "• The database is not encrypted yet. App lock guards the screens, not the stored file.",
                 )

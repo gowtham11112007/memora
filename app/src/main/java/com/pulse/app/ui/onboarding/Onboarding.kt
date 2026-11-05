@@ -46,7 +46,7 @@ private data class Page(val fill: Color, val title: String, val body: String)
 
 private val PAGES = listOf(
     Page(Lime, "Your life,\nremembered\nprivately.", "Memora turns the notifications you already get into money records, reminders and notes."),
-    Page(Periwinkle, "You stay\nin control.", "Only apps you choose are read. OTPs and passwords are dropped, and long numbers are masked. Smart reading sends messages from those apps to Google's AI, and you can turn it off in Settings."),
+    Page(Periwinkle, "You stay\nin control.", "Only apps you choose are read. OTPs and passwords are dropped, and long numbers are masked. Smart reading sends messages from those apps to cloud AI services, and you can turn it off in Settings."),
     Page(Mint, "Let's set\nit up.", "Turn on reading to start, or look around with sample data first. You can change this any time in Settings."),
 )
 

@@ -48,7 +48,10 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import android.app.Activity
+import android.app.KeyguardManager
 import android.content.Intent
+import android.view.WindowManager
 import com.pulse.app.MainActivity
 import com.pulse.app.PulseApp
 import com.pulse.app.PulseGraph
@@ -59,6 +62,7 @@ import com.pulse.app.domain.RecordType
 import com.pulse.app.service.EveningBrief
 import java.time.ZoneId
 import com.pulse.app.ui.components.ArrowChip
+import com.pulse.app.ui.components.LocalSnackbar
 import com.pulse.app.ui.components.bounceClick
 import com.pulse.app.ui.components.labelled
 import com.pulse.app.ui.components.riseIn
@@ -114,7 +118,12 @@ class SettingsViewModel(private val graph: PulseGraph) : ViewModel() {
 }
 
 @Composable
-fun SettingsScreen(onOpenReading: () -> Unit, onOpenAi: () -> Unit) {
+fun SettingsScreen(
+    onOpenReading: () -> Unit,
+    onOpenAi: () -> Unit,
+    onOpenPeople: () -> Unit,
+    onOpenActivity: () -> Unit,
+) {
     val graph = (LocalContext.current.applicationContext as PulseApp).graph
     val vm: SettingsViewModel = viewModel(factory = viewModelFactory { initializer { SettingsViewModel(graph) } })
     val state by vm.state.collectAsStateWithLifecycle()
@@ -122,6 +131,9 @@ fun SettingsScreen(onOpenReading: () -> Unit, onOpenAi: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var evening by remember { mutableStateOf(EveningBrief.isOn(context)) }
+    var autoReminders by remember { mutableStateOf(graph.aiSettings.isAutoReminders()) }
+    var appLock by remember { mutableStateOf(graph.aiSettings.isAppLock()) }
+    val snackbar = LocalSnackbar.current
     SettingsContent(
         state,
         accessOn,
@@ -129,6 +141,24 @@ fun SettingsScreen(onOpenReading: () -> Unit, onOpenAi: () -> Unit) {
         onOpenReading,
         onOpenAi,
         vm::deleteEverything,
+        onOpenPeople = onOpenPeople,
+        onOpenActivity = onOpenActivity,
+        autoRemindersOn = autoReminders,
+        onAutoReminders = {
+            autoReminders = it
+            graph.aiSettings.setAutoReminders(it)
+        },
+        appLockOn = appLock,
+        onAppLock = { on ->
+            if (on && !context.getSystemService(KeyguardManager::class.java).isDeviceSecure) {
+                scope.launch { snackbar.showSnackbar("Set a screen lock on your phone first.") }
+            } else {
+                appLock = on
+                graph.aiSettings.setAppLock(on)
+                val window = (context as? Activity)?.window
+                if (on) window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            }
+        },
         eveningOn = evening,
         onEvening = {
             evening = it
@@ -170,6 +200,12 @@ fun SettingsContent(
     eveningOn: Boolean = true,
     onEvening: (Boolean) -> Unit = {},
     onExport: () -> Unit = {},
+    onOpenPeople: () -> Unit = {},
+    onOpenActivity: () -> Unit = {},
+    autoRemindersOn: Boolean = false,
+    onAutoReminders: (Boolean) -> Unit = {},
+    appLockOn: Boolean = false,
+    onAppLock: (Boolean) -> Unit = {},
 ) {
     var showPrivacy by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -216,6 +252,38 @@ fun SettingsContent(
                         scheme.onErrorContainer,
                         Modifier.weight(1f),
                     ) { confirmDelete = true }
+                }
+            }
+        }
+        item { LinkRow("People", "Star or mute contacts in your chat and SMS apps.", onOpenPeople, Modifier.riseIn(3)) }
+        item { LinkRow("Notifications read", "See what Memora read and what it did with each one.", onOpenActivity, Modifier.riseIn(3)) }
+        item {
+            Surface(shape = MaterialTheme.shapes.medium, color = scheme.surface, modifier = Modifier.fillMaxWidth().riseIn(3)) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("App lock", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Asks for your screen lock when you open Memora. Also hides it in recent apps and blocks screenshots.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = appLockOn, onCheckedChange = onAppLock, modifier = Modifier.labelled("App lock"))
+                }
+            }
+        }
+        item {
+            Surface(shape = MaterialTheme.shapes.medium, color = scheme.surface, modifier = Modifier.fillMaxWidth().riseIn(3)) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Automatic reminders", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Sets a reminder without asking when a non-chat app gives a clear date, and shows Undo. Chats and unclear dates still ask.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = autoRemindersOn, onCheckedChange = onAutoReminders, modifier = Modifier.labelled("Automatic reminders"))
                 }
             }
         }
@@ -278,10 +346,11 @@ fun SettingsContent(
                         "• OTPs, passwords, CVVs and PINs are dropped before anything is saved.\n" +
                         "• Long reference numbers are masked.\n" +
                         "• Message text is deleted after 24 hours.\n" +
-                        "• Short lines from useful messages stay in Second Brain until you delete them.\n" +
+                        "• Short lines from useful messages stay in Second Brain until you delete them. Chats are saved only from people you star.\n" +
+                        "• The notifications-read list keeps sender names, never messages, for 7 days.\n" +
                         "• If you add a Gemini key, general questions you type are sent to Google. Free-tier data may be used to improve Google's products, so don't type private details.\n" +
                         "• If you turn on email, weekly totals are sent through Resend. They name no merchants or messages.\n" +
-                        "• The database is not encrypted yet.",
+                        "• The database is not encrypted yet. App lock guards the screens, not the stored file.",
                 )
             },
         )
@@ -296,6 +365,20 @@ fun SettingsContent(
             title = { Text("Delete all your data?") },
             text = { Text("This removes every record, reminder, category, allowed app and AI setting from this phone. It can't be undone.") },
         )
+    }
+}
+
+@Composable
+private fun LinkRow(title: String, note: String, onClick: () -> Unit, modifier: Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(shape = MaterialTheme.shapes.medium, color = scheme.surface, modifier = modifier.bounceClick(onClick = onClick).fillMaxWidth()) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(note, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+            }
+            ArrowChip(scheme.inverseSurface, scheme.inverseOnSurface, size = 38.dp)
+        }
     }
 }
 

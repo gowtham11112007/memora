@@ -17,7 +17,7 @@ The Claude Design canvas (https://claude.ai/artifact/RrKGW7mmcydKFnwmd3fR71) sho
 - **Lavender:** soft tinted tiles, hatched fills, rounded type.
 
 ## Signature components (ui/components/Signature.kt)
-`FolderTabShape`, `NotchedBarShape`, `ArrowChip`, `RingStat`.
+`FolderTabShape`, `NotchedBarShape`, `ArrowChip`.
 
 ## Motion
 Pages slide and fade in the direction of travel. The period thumb and folder tab slide. Nav items spring and the Ask spark turns. Content rises in, amounts count up, bars and rings grow, and typing dots pulse.

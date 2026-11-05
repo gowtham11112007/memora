@@ -1,6 +1,7 @@
 package com.pulse.app.ui.calendar
 
 import android.Manifest
+import android.app.TimePickerDialog
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -77,10 +78,12 @@ import com.pulse.app.PulseGraph
 import com.pulse.app.data.MoneyRecord
 import com.pulse.app.data.Reminder
 import com.pulse.app.domain.RecordType
+import com.pulse.app.domain.Repeat
 import com.pulse.app.domain.TimeRange
 import com.pulse.app.domain.formatRupees
 import com.pulse.app.domain.startDate
 import com.pulse.app.domain.toLocalDate
+import com.pulse.app.ui.components.ArrowChip
 import com.pulse.app.ui.components.CircleIconButton
 import com.pulse.app.ui.components.FilterPills
 import com.pulse.app.ui.components.NoteCard
@@ -112,6 +115,8 @@ data class CalendarUiState(
     val today: LocalDate = LocalDate.now(),
     val reminders: List<Reminder> = emptyList(),
     val spentByDay: Map<LocalDate, Long> = emptyMap(),
+    val openTodos: Int = 0,
+    val suggestedTodos: Int = 0,
 )
 
 class CalendarViewModel(private val graph: PulseGraph) : ViewModel() {
@@ -120,8 +125,14 @@ class CalendarViewModel(private val graph: PulseGraph) : ViewModel() {
     private val selected = MutableStateFlow(LocalDate.now())
     private val dao = graph.db.reminderDao()
 
-    val state = combine(month, selected, dao.observeAll(), graph.db.moneyRecordDao().observeAll()) { m, day, reminders, records ->
-        CalendarUiState(m, day, LocalDate.now(), reminders, spentByDay(records))
+    val state = combine(
+        month,
+        selected,
+        dao.observeAll(),
+        graph.db.moneyRecordDao().observeAll(),
+        graph.db.todoDao().observeAll(),
+    ) { m, day, reminders, records, todos ->
+        CalendarUiState(m, day, LocalDate.now(), reminders, spentByDay(records), todos.count { it.confirmed && !it.done }, todos.count { !it.confirmed })
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CalendarUiState())
 
     private fun spentByDay(records: List<MoneyRecord>): Map<LocalDate, Long> =
@@ -137,7 +148,7 @@ class CalendarViewModel(private val graph: PulseGraph) : ViewModel() {
         selected.value = day
     }
 
-    fun add(title: String, day: LocalDate, time: LocalTime) {
+    fun add(title: String, day: LocalDate, time: LocalTime, repeat: Repeat) {
         viewModelScope.launch {
             val reminder = Reminder(
                 title = title.trim(),
@@ -145,6 +156,7 @@ class CalendarViewModel(private val graph: PulseGraph) : ViewModel() {
                 confidence = 1.0,
                 confirmed = true,
                 source = MoneyRecord.MANUAL,
+                repeat = repeat.name,
             )
             graph.reminders.schedule(reminder.copy(id = dao.insert(reminder)))
         }
@@ -161,7 +173,9 @@ class CalendarViewModel(private val graph: PulseGraph) : ViewModel() {
 
     fun toggleDone(reminder: Reminder) {
         viewModelScope.launch {
-            val updated = reminder.copy(done = !reminder.done)
+            // Ticking a repeating reminder finishes this one and moves it to its next date.
+            val next = if (reminder.done) null else Repeat.of(reminder.repeat).next(reminder.dueAt, System.currentTimeMillis(), zone)
+            val updated = if (next != null) reminder.copy(dueAt = next) else reminder.copy(done = !reminder.done)
             dao.update(updated)
             if (updated.done) graph.reminders.cancel(updated.id) else graph.reminders.schedule(updated)
         }
@@ -183,7 +197,7 @@ class CalendarViewModel(private val graph: PulseGraph) : ViewModel() {
 }
 
 @Composable
-fun CalendarScreen() {
+fun CalendarScreen(onOpenTodo: () -> Unit) {
     val context = LocalContext.current
     val graph = (context.applicationContext as PulseApp).graph
     val vm: CalendarViewModel = viewModel(factory = viewModelFactory { initializer { CalendarViewModel(graph) } })
@@ -212,6 +226,7 @@ fun CalendarScreen() {
             vm.delete(it)
             undo("Reminder deleted") { vm.restore(it) }
         },
+        onOpenTodo = onOpenTodo,
     )
     if (adding) AddReminderSheet(state.selected, state.today, { adding = false }, vm::add)
 }
@@ -226,10 +241,14 @@ fun CalendarContent(
     onToggle: (Reminder) -> Unit,
     onConfirm: (Reminder) -> Unit,
     onDelete: (Reminder) -> Unit,
+    onOpenTodo: () -> Unit = {},
 ) {
     val zone = ZoneId.systemDefault()
     val byDay = state.reminders.groupBy { it.dueAt.toLocalDate(zone) }
-    val dayReminders = byDay[state.selected].orEmpty()
+    val now = System.currentTimeMillis()
+    // Suggestions are listed together whatever their date, so one on a far-off day still gets seen.
+    val waiting = state.reminders.filter { !it.confirmed && !it.done && it.dueAt >= now }
+    val dayReminders = byDay[state.selected].orEmpty() - waiting.toSet()
     LazyColumn(
         modifier = Modifier.fillMaxSize().statusBarsPadding(),
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 128.dp),
@@ -248,8 +267,15 @@ fun CalendarContent(
                 CircleIconButton(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Next month", { onMonth(1) })
             }
         }
+        if (waiting.isNotEmpty()) {
+            item { SectionLabel("Needs your answer", Modifier.riseIn(1)) }
+            items(waiting, key = { "w-${it.id}" }) { reminder ->
+                ReminderRow(reminder, onToggle, onConfirm, onDelete, Modifier.animateItem(), showDate = true)
+            }
+        }
         item { MonthCard(state, byDay.keys, onSelect, Modifier.riseIn(1)) }
         item { ProgressCard(state, Modifier.riseIn(2)) }
+        item { TodoCard(state.openTodos, state.suggestedTodos, onOpenTodo, Modifier.riseIn(2)) }
         item {
             Row(
                 Modifier.fillMaxWidth().padding(top = 6.dp).riseIn(2),
@@ -427,12 +453,46 @@ private fun ProgressCard(state: CalendarUiState, modifier: Modifier) {
 }
 
 @Composable
+private fun TodoCard(open: Int, suggested: Int, onOpen: () -> Unit, modifier: Modifier) {
+    val fill = MaterialTheme.colorScheme.primaryContainer
+    val ink = MaterialTheme.colorScheme.onPrimaryContainer
+    Row(
+        modifier
+            .bounceClick(onClick = onOpen)
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .background(fill)
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("To-do list", style = MaterialTheme.typography.titleMedium, color = ink)
+            Text(
+                when (open) {
+                    0 -> "Nothing to do"
+                    1 -> "1 thing to do"
+                    else -> "$open things to do"
+                } + when (suggested) {
+                    0 -> ""
+                    1 -> " · 1 suggestion"
+                    else -> " · $suggested suggestions"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = ink.copy(alpha = 0.72f),
+            )
+        }
+        ArrowChip(ink, fill, size = 38.dp)
+    }
+}
+
+@Composable
 private fun ReminderRow(
     reminder: Reminder,
     onToggle: (Reminder) -> Unit,
     onConfirm: (Reminder) -> Unit,
     onDelete: (Reminder) -> Unit,
     modifier: Modifier,
+    showDate: Boolean = false,
 ) {
     val scheme = MaterialTheme.colorScheme
     val unconfirmed = !reminder.confirmed
@@ -447,7 +507,7 @@ private fun ReminderRow(
         else -> scheme.onPrimaryContainer
     }
     val time = Instant.ofEpochMilli(reminder.dueAt).atZone(ZoneId.systemDefault())
-        .format(DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH))
+        .format(DateTimeFormatter.ofPattern(if (showDate) "EEE d MMM, h:mm a" else "h:mm a", Locale.ENGLISH))
     Surface(shape = MaterialTheme.shapes.medium, color = fill, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -462,7 +522,12 @@ private fun ReminderRow(
                 )
                 Column(Modifier.weight(1f)) {
                     Text(reminder.title, style = MaterialTheme.typography.titleMedium, color = ink)
-                    Text(time, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.72f))
+                    val repeat = Repeat.of(reminder.repeat)
+                    Text(
+                        if (repeat == Repeat.NONE) time else "$time · Repeats ${repeat.label.lowercase()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ink.copy(alpha = 0.72f),
+                    )
                 }
                 CircleIconButton(
                     Icons.Rounded.Close,
@@ -494,11 +559,13 @@ private fun AddReminderSheet(
     day: LocalDate,
     today: LocalDate,
     onDismiss: () -> Unit,
-    onSave: (String, LocalDate, LocalTime) -> Unit,
+    onSave: (String, LocalDate, LocalTime, Repeat) -> Unit,
 ) {
     var title by remember { mutableStateOf("") }
     var time by remember { mutableStateOf(LocalTime.of(9, 0)) }
+    var repeat by remember { mutableStateOf(Repeat.NONE) }
     val inPast = day.atTime(time) <= LocalDateTime.now()
+    val context = LocalContext.current
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp).navigationBarsPadding(),
@@ -524,6 +591,18 @@ private fun AddReminderSheet(
                 selected = time,
                 onSelect = { time = it },
             )
+            TextButton(
+                onClick = {
+                    TimePickerDialog(context, { _, hour, minute -> time = LocalTime.of(hour, minute) }, time.hour, time.minute, false).show()
+                },
+            ) {
+                Text("Other time · " + time.format(DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH)))
+            }
+            FilterPills(
+                options = Repeat.entries.map { it to it.label },
+                selected = repeat,
+                onSelect = { repeat = it },
+            )
             if (inPast) {
                 Text(
                     if (day < today) "This day has passed. Pick a later day." else "This time has passed. Pick a later time.",
@@ -532,7 +611,7 @@ private fun AddReminderSheet(
                 )
             }
             Button(
-                onClick = { onSave(title, day, time); onDismiss() },
+                onClick = { onSave(title, day, time, repeat); onDismiss() },
                 enabled = title.isNotBlank() && !inPast,
                 modifier = Modifier.fillMaxWidth(),
             ) {

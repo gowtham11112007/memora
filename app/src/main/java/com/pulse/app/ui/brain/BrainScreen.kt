@@ -210,6 +210,7 @@ private fun NoteRow(note: Note, onPin: (Note) -> Unit, onDelete: (Note) -> Unit,
         NoteKind.DELIVERY -> scheme.tertiaryContainer to scheme.onTertiaryContainer
         NoteKind.TICKET -> scheme.secondaryContainer to scheme.onSecondaryContainer
         NoteKind.EVENT -> scheme.primaryContainer to scheme.onPrimaryContainer
+        NoteKind.PEOPLE -> scheme.inverseSurface to scheme.inverseOnSurface
     }
     Surface(shape = MaterialTheme.shapes.medium, color = fill, modifier = modifier.fillMaxWidth()) {
         Row(Modifier.padding(start = 16.dp, end = 6.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {

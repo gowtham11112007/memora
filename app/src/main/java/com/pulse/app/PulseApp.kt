@@ -9,6 +9,8 @@ import com.pulse.app.data.DemoData
 import com.pulse.app.data.MIGRATION_1_2
 import com.pulse.app.data.MIGRATION_2_3
 import com.pulse.app.data.MIGRATION_3_4
+import com.pulse.app.data.MIGRATION_4_5
+import com.pulse.app.data.MIGRATION_5_6
 import com.pulse.app.data.MoneyPrefs
 import com.pulse.app.data.PulseDatabase
 import com.pulse.app.service.BudgetAlert
@@ -25,17 +27,22 @@ import kotlinx.coroutines.launch
 class PulseGraph(val appContext: Context, val demo: Boolean = false) {
     val db: PulseDatabase =
         Room.databaseBuilder(appContext, PulseDatabase::class.java, if (demo) "pulse-demo.db" else "pulse.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .build()
     val aiSettings = AiSettings(appContext)
     val moneyPrefs = MoneyPrefs(appContext, demo)
     val reminders = ReminderScheduler(appContext, demo)
     val captureRepository = CaptureRepository(
         db,
-        onReminderDetected = { ReminderPrompt.show(appContext, it) },
+        onReminderDetected = { reminder ->
+            if (reminder.confirmed) reminders.schedule(reminder)
+            ReminderPrompt.show(appContext, reminder)
+        },
         onBalanceSeen = moneyPrefs::setBank,
         isPaused = aiSettings::isPaused,
         onRecordSaved = { BudgetAlert.check(this) },
+        autoConfirmSure = aiSettings::isAutoReminders,
+        onTodoSuggested = { ReminderPrompt.showTodo(appContext, it) },
     )
 }
 

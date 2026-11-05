@@ -50,7 +50,7 @@ object ExpenseExtractor {
     }
 
     private val incomeWords = Regex(
-        """\b(paid you|sent you|payment of [^.]*? received|received|credited|refund(?:ed)?|deposited|cashback)\b""",
+        """\b(paid you|sent you|(?:paid|sent)\s+(?:₹|rs\.?|inr\.?)\s*[\d,.]+\s+to\s+you|payment of [^.]*? received|received|credited|refund(?:ed)?|deposited|cashback)\b""",
         ignoreCase,
     )
     private val expenseWords = Regex(
@@ -58,27 +58,68 @@ object ExpenseExtractor {
         ignoreCase,
     )
 
-    private const val NAME = """([A-Za-z0-9&@'_-][^.;,\n]*?)"""
+    private const val NAME = """([A-Za-z0-9&@'_-][^.;,!()\n]*?)"""
     private const val NAME_END =
-        """(?=\s+(?:via|on|using|from|ref|upi|for|thru|through|refno|with|and|is|was|has|successful|successfully|processed|done|deposited|at|txn)\b|\s*[.;,\n]|\s*$)"""
-    private val toMerchant = Regex("""\b(?:to|at)\s+(?:vpa\s+|merchant\s+)?$NAME$NAME_END""", ignoreCase)
-    private val creditedParty = Regex(""";\s*$NAME\s+credited\b""", ignoreCase)
-    private val fromSender = Regex("""\bfrom\s+(?:vpa\s+)?$NAME$NAME_END""", ignoreCase)
-    private val bySender = Regex("""\bby\s+(?:vpa\s+)?$NAME$NAME_END""", ignoreCase)
-    private val paidYouSender = Regex("""^\s*(.+?)\s+(?:paid|sent)\s+you\b""", ignoreCase)
-    private val notAName = Regex("""^(your|you|a/?c|account|bank|card|xx|wallet)\b""", ignoreCase)
+        """(?=\s+(?:via|on|using|from|ref|upi|for|thru|through|refno|with|and|is|was|has|successful|successfully|processed|done|deposited|at|txn|in|into|to|your)\b|\s*[.;,!()\n]|\s*$)"""
+    private const val MONEY = """(?:₹|rs\.?|inr\.?)\s*[\d,.]+"""
 
-    /** Reads the body first. The title is only used if the body alone has no transaction. */
-    fun extract(title: String?, text: String): Extraction? =
-        parse(text) ?: title?.takeIf { it.isNotBlank() }?.let { parse("$it. $text") }
+    // Banks often write "UPI/P2A/123456789/RAHUL KUMAR/HDFC", in either direction.
+    private val upiPathName = Regex("""\bUPI/(?:[A-Za-z0-9]+/)?\d{6,}/([^/\n.]+)""", ignoreCase)
+    private val toMerchant = Regex("""\b(?:to|at):?\s+(?:vpa\s+|merchant\s+)?$NAME$NAME_END""", ignoreCase)
+    private val creditedParty = Regex(""";\s*$NAME\s+credited\b""", ignoreCase)
+    private val paidPerson = Regex("""\b(?:paid|sent)\s+$NAME\s+$MONEY""", ignoreCase)
+    private val fromSender = Regex("""\bfrom:?\s+(?:vpa\s+)?$NAME$NAME_END""", ignoreCase)
+    private val bySender = Regex("""\bby\s+(?:vpa\s+)?$NAME$NAME_END""", ignoreCase)
+    private val paidYouSender = Regex("""^\s*(.+?)\s+(?:has\s+)?(?:paid|sent)\s+(?:you\b|$MONEY\s+to\s+you\b)""", ignoreCase)
+
+    // Own accounts, amounts ("credited by Rs500"), clock times ("at 2:39 PM") and app names are never the other person.
+    private val notAName = Regex(
+        """^(your|you|a/?c|acct|account|bank|card|xx|wallet)\b|^(?:₹|rs\.?|inr\.?)?\s*[\d,.]+$|^\d{1,2}[:.]\d{2}\b|^(?:google pay|gpay|paytm|phonepe|bhim|cred)$""",
+        ignoreCase,
+    )
+
+    private val personTitle = Regex("""^[A-Za-z][A-Za-z .']{1,39}$""")
+    private val notAPersonTitle = Regex(
+        """\b(pay|gpay|paytm|phonepe|bhim|cred|bank|upi|payment|payments|money|received|credited|debited|paid|sent|alert|alerts|transaction|wallet|messages|notification|update|success|successful)\b""",
+        ignoreCase,
+    )
+
+    private val reference = Regex(
+        """\b(?:ref(?:erence)?|rrn|utr|txn|transaction|upi)\.?\s*(?:no\.?|number|id|ref)?\s*[:.#-]?\s*[A-Za-z]{0,4}(\d{6,})""",
+        ignoreCase,
+    )
+    private val upiPathReference = Regex("""\bUPI/(?:[A-Za-z0-9]+/)?(\d{6,})""", ignoreCase)
+
+    /** The last 4 digits of the bank's reference, which are the same whichever app reports the payment. */
+    fun findReference(text: String): String? =
+        (reference.find(text) ?: upiPathReference.find(text))?.groupValues?.get(1)?.takeLast(4)
+
+    /**
+     * Reads the body first, then adds the title if the body has no transaction or no name.
+     * Payment apps may put the person in the title alone, so with [titleMayBePerson] a title that
+     * looks like a name is used. It's off for SMS and chats, where the title is the sender of the message.
+     */
+    fun extract(title: String?, text: String, titleMayBePerson: Boolean = true): Extraction? {
+        val cleanTitle = title?.trim()?.takeIf { it.isNotEmpty() }
+        val body = parse(text)
+        val joined = if (cleanTitle != null && body?.merchant == null) parse("$cleanTitle. $text") else null
+        val best = when {
+            body == null -> joined
+            joined != null && joined.amountPaise == body.amountPaise && joined.type == body.type -> joined
+            else -> body
+        } ?: return null
+        val titleIsName = titleMayBePerson && cleanTitle != null &&
+            personTitle.matches(cleanTitle) && !notAPersonTitle.containsMatchIn(cleanTitle)
+        return if (best.merchant == null && titleIsName) best.copy(merchant = cleanTitle) else best
+    }
 
     private fun parse(message: String): Extraction? {
         if (notATransaction.containsMatchIn(message)) return null
         val cleaned = balance.replace(message, " ")
         val amount = findAmount(cleaned) ?: return null
         val type = findType(cleaned) ?: return null
-        val merchant = if (type == RecordType.EXPENSE) {
-            firstName(toMerchant, cleaned) ?: firstName(creditedParty, cleaned)
+        val merchant = firstName(upiPathName, cleaned) ?: if (type == RecordType.EXPENSE) {
+            firstName(toMerchant, cleaned) ?: firstName(creditedParty, cleaned) ?: firstName(paidPerson, cleaned)
         } else {
             firstName(paidYouSender, cleaned) ?: firstName(fromSender, cleaned) ?: firstName(bySender, cleaned)
         }
@@ -109,6 +150,6 @@ object ExpenseExtractor {
 
     private fun firstName(pattern: Regex, text: String): String? =
         pattern.findAll(text)
-            .map { it.groupValues[1].substringBefore('@').trim() }
-            .firstOrNull { it.isNotEmpty() && it.length <= 40 && !notAName.containsMatchIn(it) }
+            .map { it.groupValues[1].substringAfterLast(". ").substringBefore('@').trim().trimEnd('.', ':', ',') }
+            .firstOrNull { it.length in 2..40 && !notAName.containsMatchIn(it) }
 }

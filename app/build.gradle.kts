@@ -15,13 +15,20 @@ android {
         applicationId = "com.pulse.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+        }
+    }
+
+    // The APK takes the app's name, so people know what they're installing.
+    applicationVariants.all {
+        outputs.all {
+            (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName = "Memora.apk"
         }
     }
 

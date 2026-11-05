@@ -19,7 +19,7 @@ object DeadlineExtractor {
     private const val WEEKDAYS = "monday|tuesday|wednesday|thursday|friday|saturday|sunday"
 
     private val trigger = Regex(
-        """\b(due|deadline|last date|expires?|expiry|expiring|renew|renewal|pay by|submit|appointment|meeting|exam|interview|remind me|reminder|will be debited)\b""",
+        """\b(due|deadline|last date|expires?|expiry|expiring|renew|renewal|pay by|submit|submission|assignment|viva|quiz|class test|lab record|seminar|workshop|presentation|appointment|meeting|let'?s meet|exam|interview|remind me|reminder|will be debited)\b""",
         ic,
     )
     private val promotion = Regex("""\b(offers?|sale|deals?|discount|cashback|win|coupon|voucher|shop now|limited time)\b|%\s*off""", ic)

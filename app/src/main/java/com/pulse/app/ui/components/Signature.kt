@@ -1,38 +1,23 @@
 package com.pulse.app.ui.components
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -123,36 +108,3 @@ fun ArrowChip(fill: Color, tint: Color, modifier: Modifier = Modifier, size: Dp 
     }
 }
 
-/** A progress ring that sweeps into place, with a label in the middle. */
-@Composable
-fun RingStat(
-    fraction: Float,
-    label: String,
-    arc: Color,
-    track: Color,
-    labelStyle: TextStyle,
-    labelColor: Color,
-    modifier: Modifier = Modifier,
-    size: Dp = 62.dp,
-    strokeWidth: Dp = 5.dp,
-) {
-    var started by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { started = true }
-    val sweep by animateFloatAsState(
-        targetValue = if (started) fraction.coerceIn(0f, 1f) else 0f,
-        animationSpec = tween(850, easing = FastOutSlowInEasing),
-        label = "ring",
-    )
-    Box(modifier.size(size), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize()) {
-            val stroke = strokeWidth.toPx()
-            val box = Size(this.size.width - stroke, this.size.height - stroke)
-            val corner = Offset(stroke / 2, stroke / 2)
-            drawArc(track, 0f, 360f, false, corner, box, style = Stroke(stroke))
-            if (sweep > 0f) {
-                drawArc(arc, -90f, 360f * sweep, false, corner, box, style = Stroke(stroke, cap = StrokeCap.Round))
-            }
-        }
-        Text(label, style = labelStyle, color = labelColor, maxLines = 1)
-    }
-}

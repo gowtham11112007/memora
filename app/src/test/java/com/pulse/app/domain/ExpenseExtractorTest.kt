@@ -101,6 +101,43 @@ class ExpenseExtractorTest {
     }
 
     @Test
+    fun `reads who sent or received the money in every common wording`() {
+        fun name(title: String?, text: String, person: Boolean = true) = ExpenseExtractor.extract(title, text, person)?.merchant
+        assertEquals("Rahul Kumar", name("Rahul Kumar", "Paid you ₹500"))
+        assertEquals("Rahul Kumar", name("Rahul Kumar", "₹500 received"))
+        assertEquals("Rahul Kumar", name("Payment received", "Rahul Kumar sent you ₹500"))
+        assertEquals("Rahul Kumar", name("₹500 received", "From Rahul Kumar"))
+        assertEquals("Rahul Kumar", name(null, "Rahul Kumar sent ₹500 to you"))
+        assertEquals("RAHUL KUMAR", name(null, "₹500 received from RAHUL KUMAR in your bank account"))
+        assertEquals("RAHUL KUMAR", name(null, "INR 500.00 credited to A/c no. XX123. Info- UPI/P2A/612345678901/RAHUL KUMAR/HDFC"))
+        assertEquals("ZOMATO", name(null, "INR 99.00 debited from A/c XX1. Info: UPI/DR/612345678901/ZOMATO/YESB"))
+        assertEquals("RAHUL KUMAR", name(null, "Sent Rs.100.00\nFrom HDFC Bank A/C *1234\nTo RAHUL KUMAR\nOn 03/11/26\nRef 612345678901"))
+        assertEquals("rahul", name(null, "Rs.500 credited to HDFC Bank A/c XX1 on 03-11-26 from VPA rahul@okaxis (UPI 612345678901)"))
+        assertEquals("Rahul", name(null, "You paid Rahul ₹100"))
+    }
+
+    @Test
+    fun `never mistakes an amount, time, app or bank title for a person`() {
+        fun name(title: String?, text: String, person: Boolean = true) = ExpenseExtractor.extract(title, text, person)?.merchant
+        assertNull(name(null, "ur A/cX1234 credited by Rs500 on 01Jan26 by (Ref no 512345678901)"))
+        assertNull(name(null, "Paid ₹1 on 04 Nov at 2:39 PM"))
+        assertNull(name("Google Pay", "Paid you ₹500"))
+        assertNull(name("Payment received", "₹500 received"))
+        assertNull(name("HDFC Chennai", "A/c XX1 credited with Rs.900.00", person = false))
+        assertNull(name(null, "Rs.500 to 9876543210@ybl paid"))
+    }
+
+    @Test
+    fun `finds the last 4 digits of the bank's reference`() {
+        assertEquals("8901", ExpenseExtractor.findReference("Paid ₹250. UPI Ref No. 412345678901"))
+        assertEquals("8901", ExpenseExtractor.findReference("debited trf to Kiran Refno 412345678901"))
+        assertEquals("8901", ExpenseExtractor.findReference("credited (UPI 412345678901)"))
+        assertEquals("8901", ExpenseExtractor.findReference("Info- UPI/P2A/412345678901/RAHUL/HDFC"))
+        assertEquals("8901", ExpenseExtractor.findReference("RRN: 412345678901"))
+        assertNull(ExpenseExtractor.findReference("Paid ₹250 to Swiggy via UPI"))
+    }
+
+    @Test
     fun `tells bank alerts apart from personal chats`() {
         assertTrue(ExpenseExtractor.looksLikeBankAlert("Your a/c is debited for Rs.1.00"))
         assertFalse(ExpenseExtractor.looksLikeBankAlert("I paid 500 rupees for lunch"))

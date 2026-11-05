@@ -12,7 +12,10 @@ Any app posts a notification
        2. DROPPED_SENSITIVE: add a time-only row to drop_log
        3. STORE: ExpenseExtractor and DeadlineExtractor read the original text in memory.
             Neither found anything -> NOTHING_USEFUL, nothing kept
-            Same payment within 2 minutes -> DUPLICATE, nothing kept
+            Same payment (PaymentMatch) -> DUPLICATE. The existing record keeps the best name and reference.
+              Same bank reference -> same. Different references -> different.
+              Otherwise: same app within 2 minutes and same name, or another app within 10 minutes
+              unless both names are readable and share nothing.
             Otherwise, in one transaction: insert masked raw_event, record and/or task,
             and delete raw_events older than 24 h. Confirmed tasks go to WorkManager.
   -> Screens observe the tables via Room Flow              (ui/)
@@ -23,8 +26,17 @@ Ask Memora: question -> AskEngine (fixed questions over records and tasks)
   anything else -> GeminiClient -> gemini-flash-latest, falling back to gemini-flash-lite-latest when overloaded.
     Sends the typed question and recent Gemini turns. Never notification text or record details.
 
-A detected date -> unconfirmed task -> ReminderPrompt popup -> Yes schedules it, No deletes it.
-A useful message -> BrainClassifier -> short masked note. Personal SMS are excluded by a business-sender check.
+A detected date -> unconfirmed task -> ReminderPrompt popup -> Yes schedules it, To-do moves it, No deletes it.
+  With Automatic reminders on, a clear date from a non-chat app is set at once and the popup offers Undo.
+A message asking for something, with no date -> TaskPredictor -> unconfirmed todo -> popup: Add, Remind me tomorrow, or No.
+A confirmed reminder -> an exact alarm (on time) and a WorkManager job (survives a restart). Whichever runs first calls
+  ReminderDelivery and cancels the other -> notification: Done, In 10 min, Tomorrow. Repeating ones move to their next date.
+Unanswered suggestions -> countNeedsAnswer -> a card on Home and a list on Calendar, so a missed popup isn't lost.
+Notification buttons -> ReminderPromptReceiver -> NotificationActions (no UI, so it is tested directly).
+A useful message -> BrainClassifier -> short masked note. Personal SMS and chats are excluded by a business-sender check.
+A chat or SMS sender -> ContactMatcher -> muted: skipped. Starred: its longer messages become People notes.
+Every result from an allowed app -> one line in `activity`, shown behind the bell. Sender only, kept 7 days.
+Sub-pages keep a small history in MainActivity, so Back returns to whichever page opened them.
 ```
 
 - **UI** (Compose + ViewModel + StateFlow): Home, Calendar, Ask, Settings, Reading and Records, in a shared PulseShell with animated page changes and a floating PulseNav. Each screen has a `*Content` composable that takes plain data, so tests can render it.

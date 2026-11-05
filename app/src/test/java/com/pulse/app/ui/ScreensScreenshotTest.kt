@@ -8,7 +8,14 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.pulse.app.PulseShell
 import com.pulse.app.Route
@@ -218,6 +225,97 @@ class ScreensScreenshotTest {
         PulseShell(Route.READING, {}) {
             ReadingContent(ReadingUiState(false, sources, listOf(AppRow(AppItem("d", "Gmail"), false))), true, {}, {}, {}, { _, _ -> }, {}, {})
         }
+    }
+
+    @Test fun moneyFormOpensWithSavedValues() {
+        rule.setContent {
+            PulseTheme {
+                androidx.compose.material3.Surface {
+                    com.pulse.app.ui.home.EditMoneyForm(4235000, 1500000, "From your latest bank SMS", {}, { _, _ -> })
+                }
+            }
+        }
+        rule.onNodeWithText("42,350").assertExists()
+        rule.onNodeWithText("15,000").assertExists()
+        rule.onNodeWithText("Save changes").assertIsNotEnabled()
+        rule.onNodeWithText("15,000").performTextReplacement("20,000")
+        rule.onNodeWithText("Save changes").assertIsEnabled()
+        rule.onRoot().captureRoboImage("build/shots/edit_money.png")
+    }
+
+    @Test fun lockScreen() = shot("lock") { com.pulse.app.LockContent {} }
+
+    @Test fun homeWithAnswersWaiting() = shot("home_waiting") {
+        Home(accessOn = true, state = home.copy(needsAnswer = 2, newReads = 3))
+    }
+
+    @Test fun bellSaysHowManyAreNew() {
+        rule.setContent { PulseTheme { HomeContent(home.copy(newReads = 3), true, {}, {}, {}, {}, {}, {}, {}) } }
+        rule.onNodeWithContentDescription("See notifications read, 3 new").assertExists()
+    }
+
+    @Test fun searchFindsAppsThatAreHiddenByDefault() {
+        val sources = listOf(AppRow(AppItem("c", "PhonePe"), false))
+        val others = listOf(AppRow(AppItem("d", "Gmail"), false))
+        val chats = listOf(AppRow(AppItem("com.whatsapp", "WhatsApp"), false))
+        rule.setContent {
+            PulseTheme { ReadingContent(ReadingUiState(false, sources, others, chats), true, {}, {}, {}, { _, _ -> }, {}, {}) }
+        }
+        rule.onNodeWithText("Gmail").assertDoesNotExist()
+
+        rule.onNode(hasSetTextAction()).performTextInput("gma")
+        rule.waitForIdle()
+        rule.onNodeWithText("Gmail").assertExists()
+        rule.onNodeWithText("PhonePe").assertDoesNotExist()
+        rule.onNodeWithText("WhatsApp").assertDoesNotExist()
+
+        rule.onNode(hasSetTextAction()).performTextClearance()
+        rule.onNode(hasSetTextAction()).performTextInput("nothing like this")
+        rule.waitForIdle()
+        rule.onNodeWithText("No app called \"nothing like this\" is installed.").assertExists()
+    }
+
+    private val activityState = com.pulse.app.ui.activity.ActivityUiState(
+        entries = listOf(
+            com.pulse.app.data.ActivityEntry(1, "com.googlepay", "Google Pay", "STORE", now),
+            com.pulse.app.data.ActivityEntry(2, "com.whatsapp", "Priya", "STORE", now),
+            com.pulse.app.data.ActivityEntry(3, "com.whatsapp", "College Offers", "MUTED", now),
+            com.pulse.app.data.ActivityEntry(4, "com.google.android.apps.messaging", "", "DROPPED_SENSITIVE", now),
+            com.pulse.app.data.ActivityEntry(5, "org.telegram", "Hackathon Team", "NOTHING_USEFUL", now),
+            com.pulse.app.data.ActivityEntry(6, "com.phonepe", "PhonePe", "DUPLICATE", now),
+        ),
+        rules = listOf(
+            com.pulse.app.data.ContactRule("priya", "Priya", true),
+            com.pulse.app.data.ContactRule("college offers", "College Offers", false),
+        ),
+    )
+
+    @Config(qualifiers = "w412dp-h1180dp-xxhdpi")
+    @Test fun activity() = shot("activity") {
+        PulseShell(Route.ACTIVITY, {}) { com.pulse.app.ui.activity.ActivityContent(activityState, {}, {}, {}, {}) }
+    }
+
+    @Test fun activityDark() = shot("activity_dark", dark = true) {
+        PulseShell(Route.ACTIVITY, {}) { com.pulse.app.ui.activity.ActivityContent(activityState, {}, {}, {}, {}) }
+    }
+
+    @Test fun activityEmpty() = shot("activity_empty") {
+        PulseShell(Route.ACTIVITY, {}) { com.pulse.app.ui.activity.ActivityContent(com.pulse.app.ui.activity.ActivityUiState(), {}, {}, {}, {}) }
+    }
+
+    @Config(qualifiers = "w412dp-h1100dp-xxhdpi")
+    @Test fun people() = shot("people") {
+        PulseShell(Route.PEOPLE, {}) { com.pulse.app.ui.activity.PeopleContent(activityState, {}, { _, _ -> }, {}) }
+    }
+
+    @Test fun todo() = shot("todo") {
+        val todos = listOf(
+            com.pulse.app.data.Todo(1, "Please submit the signed form to the office", false, false, now, "com.whatsapp"),
+            com.pulse.app.data.Todo(2, "Buy a birthday gift for Amma", false, true, now, "manual"),
+            com.pulse.app.data.Todo(3, "Finish the hackathon slides", false, true, now, "manual"),
+            com.pulse.app.data.Todo(4, "Back up my phone", true, true, now, "manual"),
+        )
+        PulseShell(Route.TODO, {}) { com.pulse.app.ui.todo.TodoContent(todos, {}, {}, {}, {}, {}) }
     }
 
     @Test fun recordsLight() = shot("records_light") {

@@ -29,15 +29,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,7 +57,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -75,7 +81,6 @@ import com.pulse.app.ui.components.CircleIconButton
 import com.pulse.app.ui.components.FolderTabShape
 import com.pulse.app.ui.components.RecordDetailSheet
 import com.pulse.app.ui.components.RecordRow
-import com.pulse.app.ui.components.RingStat
 import com.pulse.app.ui.components.SparkIcon
 import com.pulse.app.ui.components.bounceClick
 import com.pulse.app.ui.components.formatCaptureTime
@@ -95,7 +100,13 @@ import java.util.Locale
 private val SIDE = 20.dp
 
 @Composable
-fun HomeScreen(onViewRecords: () -> Unit, onOpenReading: () -> Unit, onOpenCalendar: () -> Unit, onAsk: () -> Unit) {
+fun HomeScreen(
+    onViewRecords: () -> Unit,
+    onOpenReading: () -> Unit,
+    onOpenCalendar: () -> Unit,
+    onAsk: () -> Unit,
+    onOpenActivity: () -> Unit,
+) {
     val graph = (LocalContext.current.applicationContext as PulseApp).graph
     val vm: HomeViewModel = viewModel(factory = viewModelFactory { initializer { HomeViewModel(graph) } })
     val state by vm.state.collectAsStateWithLifecycle()
@@ -122,9 +133,13 @@ fun HomeScreen(onViewRecords: () -> Unit, onOpenReading: () -> Unit, onOpenCalen
         onOpenCalendar = onOpenCalendar,
         onViewRecords = onViewRecords,
         onRecord = { openRecord = it },
+        onOpenActivity = {
+            vm.markBellSeen()
+            onOpenActivity()
+        },
     )
     if (adding) AddRecordSheet(onDismiss = { adding = false }, onSave = vm::addManual)
-    if (editingMoney) EditMoneySheet({ editingMoney = false }, vm::saveMoney)
+    if (editingMoney) EditMoneySheet(state, { editingMoney = false }, vm::saveMoney)
     openRecord?.let { record ->
         RecordDetailSheet(record, state.rules, { openRecord = null }, vm::setCategory) {
             vm.delete(it)
@@ -146,6 +161,7 @@ fun HomeContent(
     onViewRecords: () -> Unit,
     onRecord: (MoneyRecord) -> Unit,
     onEditMoney: () -> Unit = {},
+    onOpenActivity: () -> Unit = {},
 ) {
     val side = Modifier.padding(horizontal = SIDE)
     LazyColumn(
@@ -153,8 +169,9 @@ fun HomeContent(
         contentPadding = PaddingValues(bottom = 128.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        item { TopSheet(state, onRange, onOpenCalendar, onAdd, onAsk, onEditMoney) }
+        item { TopSheet(state, onRange, onOpenActivity, onAdd, onAsk, onEditMoney) }
         if (!accessOn) item { ReadingOffBanner(onOpenReading, side) }
+        if (state.needsAnswer > 0) item { NeedsAnswerCard(state.needsAnswer, onOpenCalendar, side.riseIn(2)) }
         if (state.nextReminder != null || state.insights.isNotEmpty()) {
             item { TodayBrief(state, onOpenCalendar, side.riseIn(2)) }
         }
@@ -170,7 +187,7 @@ fun HomeContent(
 private fun TopSheet(
     state: HomeUiState,
     onRange: (TimeRange) -> Unit,
-    onOpenCalendar: () -> Unit,
+    onOpenActivity: () -> Unit,
     onAdd: () -> Unit,
     onAsk: () -> Unit,
     onEditMoney: () -> Unit,
@@ -206,7 +223,31 @@ private fun TopSheet(
                 }
                 Text("Track Your\nMoney", style = MaterialTheme.typography.headlineLarge, color = ink)
             }
-            CircleIconButton(Icons.Rounded.Notifications, "Open reminders", onOpenCalendar, size = 56)
+            Box {
+                val fresh = state.newReads
+                CircleIconButton(
+                    Icons.Rounded.Notifications,
+                    if (fresh > 0) "See notifications read, $fresh new" else "See notifications read",
+                    onOpenActivity,
+                    size = 56,
+                )
+                if (fresh > 0) {
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            if (fresh > 9) "9+" else "$fresh",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                }
+            }
         }
         Spacer(Modifier.height(14.dp))
         BalanceCard(state, onEditMoney, Modifier.riseIn(1))
@@ -261,6 +302,34 @@ private fun FlowChip(label: String, value: String, modifier: Modifier) {
     ) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = ink.copy(alpha = 0.7f), maxLines = 1)
         Text(withRupee(value), style = MaterialTheme.typography.titleMedium, color = ink, maxLines = 1)
+    }
+}
+
+/** Keeps a missed popup from being lost. Its answers wait on the Calendar page. */
+@Composable
+private fun NeedsAnswerCard(count: Int, onOpen: () -> Unit, modifier: Modifier) {
+    Row(
+        modifier
+            .bounceClick(onClick = onOpen)
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .background(Lime)
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                if (count == 1) "1 thing needs your answer" else "$count things need your answer",
+                style = MaterialTheme.typography.titleMedium,
+                color = Ink,
+            )
+            Text(
+                "Reminders and to-dos Memora found in your messages",
+                style = MaterialTheme.typography.bodySmall,
+                color = Ink.copy(alpha = 0.72f),
+            )
+        }
+        ArrowChip(Ink, Lime, size = 38.dp)
     }
 }
 
@@ -341,43 +410,127 @@ private fun BudgetCard(state: HomeUiState, onEdit: () -> Unit, modifier: Modifie
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EditMoneySheet(onDismiss: () -> Unit, onSave: (Long?, Long?) -> Unit) {
-    var balance by remember { mutableStateOf("") }
-    var budget by remember { mutableStateOf("") }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp).navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Text("Your money", style = MaterialTheme.typography.titleLarge)
-            OutlinedTextField(
-                value = balance,
-                onValueChange = { balance = it },
-                label = { Text("Current balance in ₹") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = budget,
-                onValueChange = { budget = it },
-                label = { Text("Monthly budget in ₹") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text(
-                "Leave a box empty to keep it as it is. A bank SMS with a balance will replace what you set here.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Button(
-                onClick = { onSave(parseRupees(balance), parseRupees(budget)); onDismiss() },
-                enabled = parseRupees(balance) != null || parseRupees(budget) != null,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Save")
+private fun EditMoneySheet(state: HomeUiState, onDismiss: () -> Unit, onSave: (Long?, Long?) -> Unit) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) {
+        EditMoneyForm(state.balance?.paise, state.budgetPaise, state.balance?.source, onDismiss) { balance, budget ->
+            onSave(balance, budget)
+            onDismiss()
+        }
+    }
+}
+
+/** What the form would change. Null values are left alone, and a budget of 0 means no budget. */
+data class MoneyChange(val valid: Boolean, val balancePaise: Long? = null, val budgetPaise: Long? = null) {
+    val hasChanges get() = valid && (balancePaise != null || budgetPaise != null)
+}
+
+private fun amountFrom(text: String): Long? =
+    if (Regex("""0+(\.0+)?""").matches(text.replace(",", "").trim())) 0L else parseRupees(text)
+
+/** Compares the boxes with the saved values, so saving the budget never overwrites a balance from the bank. */
+fun moneyChange(currentBalance: Long?, currentBudget: Long, balanceText: String, budgetText: String): MoneyChange {
+    val balance = if (balanceText.isBlank()) null else amountFrom(balanceText)
+    val budget = if (budgetText.isBlank()) 0L else amountFrom(budgetText)
+    val balanceOk = balance != null || (balanceText.isBlank() && currentBalance == null)
+    if (!balanceOk || budget == null) return MoneyChange(valid = false)
+    return MoneyChange(
+        valid = true,
+        balancePaise = balance?.takeIf { it != currentBalance },
+        budgetPaise = budget.takeIf { it != currentBudget },
+    )
+}
+
+private fun plainAmount(paise: Long) = formatRupees(paise).removePrefix("₹")
+
+@Composable
+private fun MoneyField(
+    label: String,
+    value: TextFieldValue,
+    placeholder: String,
+    help: String,
+    error: String?,
+    onChange: (TextFieldValue) -> Unit,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { next -> if (next.text.all { it.isDigit() || it == ',' || it == '.' }) onChange(next) },
+        label = { Text(label) },
+        placeholder = { Text(placeholder) },
+        prefix = { Text("₹") },
+        trailingIcon = {
+            if (value.text.isNotEmpty()) {
+                IconButton(onClick = { onChange(TextFieldValue("")) }) {
+                    Icon(Icons.Rounded.Close, contentDescription = "Clear $label")
+                }
             }
+        },
+        supportingText = { Text(error ?: help) },
+        isError = error != null,
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+/** Opens with your saved values, and Save stays off until something actually changes. */
+@Composable
+fun EditMoneyForm(
+    balancePaise: Long?,
+    budgetPaise: Long,
+    balanceSource: String?,
+    onCancel: () -> Unit,
+    onSave: (Long?, Long?) -> Unit,
+) {
+    // A tracked balance can dip below zero, and the box can't show that, so it starts empty instead.
+    val startBalance = balancePaise?.takeIf { it >= 0 }
+    val filled = { text: String -> TextFieldValue(text, TextRange(text.length)) }
+    var balance by remember { mutableStateOf(filled(startBalance?.let(::plainAmount).orEmpty())) }
+    var budget by remember { mutableStateOf(filled(budgetPaise.takeIf { it > 0 }?.let(::plainAmount).orEmpty())) }
+    val change = moneyChange(startBalance, budgetPaise, balance.text, budget.text)
+    val balanceBad = balance.text.isBlank() && startBalance != null ||
+        balance.text.isNotBlank() && amountFrom(balance.text) == null
+    val budgetBad = budget.text.isNotBlank() && amountFrom(budget.text) == null
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp).navigationBarsPadding(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text("Your money", style = MaterialTheme.typography.titleLarge)
+        Text(
+            "Change either amount, or leave them as they are.",
+            Modifier.padding(bottom = 10.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        MoneyField(
+            "Bank balance",
+            balance,
+            "Enter your balance",
+            (balanceSource?.let { "$it. " } ?: "") + "A new bank SMS updates this automatically.",
+            when {
+                !balanceBad -> null
+                balance.text.isBlank() -> "Enter your balance. Use 0 if it's empty."
+                else -> "Enter an amount, like 12,500"
+            },
+        ) { balance = it }
+        MoneyField(
+            "Monthly budget",
+            budget,
+            "No budget set",
+            "Clear this if you don't want a budget.",
+            if (budgetBad) "Enter an amount, like 15,000" else null,
+        ) { budget = it }
+        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
+            Button(
+                onClick = { onSave(change.balancePaise, change.budgetPaise) },
+                enabled = change.hasChanges,
+                modifier = Modifier.weight(1f),
+            ) { Text("Save changes") }
         }
     }
 }
@@ -451,8 +604,6 @@ private fun MoneyCard(state: HomeUiState, onAdd: () -> Unit, onAsk: () -> Unit, 
                     MaterialTheme.typography.displayMedium,
                     scheme.onSurface,
                 )
-                Spacer(Modifier.height(14.dp))
-                CategoryRings(state, Modifier.fillMaxWidth())
                 Spacer(Modifier.height(18.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     ActionPill("Add", false, onAdd, Modifier.weight(1f)) { ink ->
@@ -484,29 +635,6 @@ private fun TabLabel(text: String, active: Boolean, modifier: Modifier, onClick:
             style = MaterialTheme.typography.titleLarge,
             color = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.72f),
         )
-    }
-}
-
-/** The share of spending in each main category. */
-@Composable
-private fun CategoryRings(state: HomeUiState, modifier: Modifier) {
-    val scheme = MaterialTheme.colorScheme
-    val total = state.spentPaise.coerceAtLeast(1L).toFloat()
-    Row(modifier, horizontalArrangement = Arrangement.SpaceBetween) {
-        listOf(Category.FOOD, Category.TRANSPORT, Category.SHOPPING, Category.BILLS).forEach { category ->
-            val share = (state.byCategory[category] ?: 0L) / total
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                RingStat(
-                    share,
-                    "${(share * 100).toInt()}%",
-                    scheme.primary,
-                    scheme.surfaceVariant,
-                    MaterialTheme.typography.labelMedium,
-                    scheme.onSurface,
-                )
-                Text(category.label, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
-            }
-        }
     }
 }
 

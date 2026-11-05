@@ -1,5 +1,6 @@
 package com.pulse.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -36,6 +37,8 @@ data class MoneyRecord(
     val merchant: String?,
     val type: RecordType,
     val occurredAt: Long,
+    /** The last 4 digits of the bank's reference, used to spot the same payment from another app. */
+    val reference: String? = null,
 ) {
     companion object { const val MANUAL = "manual" }
 }
@@ -64,6 +67,41 @@ data class Reminder(
     val confirmed: Boolean,
     val done: Boolean = false,
     /** The source app, or [MoneyRecord.MANUAL]. */
+    val source: String,
+    /** A Repeat name: NONE, DAILY, WEEKLY or MONTHLY. */
+    @ColumnInfo(defaultValue = "NONE") val repeat: String = "NONE",
+)
+
+/** A person the user starred or muted, matched against the name a notification shows. */
+@Entity(tableName = "contact_rule")
+data class ContactRule(
+    /** Lowercase, for matching. */
+    @PrimaryKey val name: String,
+    val label: String,
+    /** True means priority. False means muted, so their messages are skipped. */
+    val starred: Boolean,
+)
+
+/** One line per notification from an allowed app. Never holds the message. Deleted after 7 days. */
+@Entity(tableName = "activity", indices = [Index("at")])
+data class ActivityEntry(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val packageName: String,
+    /** The masked sender or title. Blank for anything sensitive. */
+    val title: String,
+    /** A CaptureDecision name. */
+    val outcome: String,
+    val at: Long,
+)
+
+/** A to-do. An unconfirmed one was suggested from a message and is waiting for a yes. */
+@Entity(tableName = "todo", indices = [Index("createdAt")])
+data class Todo(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val text: String,
+    val done: Boolean = false,
+    val confirmed: Boolean = true,
+    val createdAt: Long,
     val source: String,
 )
 

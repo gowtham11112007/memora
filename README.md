@@ -13,7 +13,7 @@
 - Only apps you turn on are read, and every app starts off.
 - OTPs, passwords, CVVs and PINs are dropped before anything is saved, and long reference numbers are masked.
 - Notifications and records never leave the phone. Only general questions you type go to Gemini.
-- Not built yet: database encryption and an app lock. See [docs/privacy.md](docs/privacy.md).
+- App lock is optional, and uses your phone's screen lock. Not built yet: database encryption. See [docs/privacy.md](docs/privacy.md).
 
 ## Set up
 You need Android Studio's SDK and JDK 17.
@@ -24,7 +24,7 @@ export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
 ./gradlew assembleDebug
 ```
 
-The APK is at `app/build/outputs/apk/debug/app-debug.apk`.
+The APK is at `app/build/outputs/apk/debug/Memora.apk`.
 
 On the phone:
 1. Install the APK and allow notifications.

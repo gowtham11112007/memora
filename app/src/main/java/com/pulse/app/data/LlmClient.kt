@@ -43,6 +43,14 @@ class AiSettings(context: Context) {
 
     fun setPaused(paused: Boolean) = prefs.edit().putBoolean("paused", paused).apply()
 
+    fun isAutoReminders(): Boolean = prefs.getBoolean("auto_reminders", false)
+
+    fun setAutoReminders(on: Boolean) = prefs.edit().putBoolean("auto_reminders", on).apply()
+
+    fun isAppLock(): Boolean = prefs.getBoolean("app_lock", false)
+
+    fun setAppLock(on: Boolean) = prefs.edit().putBoolean("app_lock", on).apply()
+
     fun clear() = prefs.edit().clear().apply()
 }
 

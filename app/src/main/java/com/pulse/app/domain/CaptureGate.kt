@@ -13,6 +13,9 @@ enum class CaptureDecision {
     DROPPED_EMPTY,
     DROPPED_SENSITIVE,
 
+    /** The sender is on the user's muted list. */
+    MUTED,
+
     /** Allowed and safe, but no money or date in it, so nothing was kept. */
     NOTHING_USEFUL,
 

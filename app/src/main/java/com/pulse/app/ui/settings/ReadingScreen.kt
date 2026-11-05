@@ -15,10 +15,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -51,6 +57,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.pulse.app.PulseApp
 import com.pulse.app.PulseGraph
 import com.pulse.app.data.AppPermission
+import com.pulse.app.data.CHAT_PACKAGES
 import com.pulse.app.data.MESSAGING_PACKAGES
 import com.pulse.app.domain.CaptureDecision
 import com.pulse.app.ui.components.AppIcon
@@ -75,6 +82,7 @@ data class ReadingUiState(
     val loading: Boolean = true,
     val sources: List<AppRow> = emptyList(),
     val others: List<AppRow> = emptyList(),
+    val chats: List<AppRow> = emptyList(),
 )
 
 /** Worth surfacing first (only shown if installed). Bank SMS arrive through the messaging apps. */
@@ -116,7 +124,8 @@ class ReadingViewModel(private val graph: PulseGraph) : ViewModel() {
                 loading = false,
                 // Messaging first: it is the only way to catch money the user sends.
                 sources = rows.filter { it.app.pkg in SOURCE_PACKAGES }.sortedBy { it.app.pkg !in MESSAGING_PACKAGES },
-                others = rows.filter { it.app.pkg !in SOURCE_PACKAGES },
+                others = rows.filter { it.app.pkg !in SOURCE_PACKAGES && it.app.pkg !in CHAT_PACKAGES },
+                chats = rows.filter { it.app.pkg in CHAT_PACKAGES },
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReadingUiState())
@@ -145,6 +154,7 @@ class ReadingViewModel(private val graph: PulseGraph) : ViewModel() {
                     CaptureDecision.IGNORED_NOT_ALLOWED -> "Ignored: no app is allowed yet. Turn one on below."
                     CaptureDecision.DROPPED_SENSITIVE -> "Dropped: it looks like a code or password. Nothing was stored."
                     CaptureDecision.DROPPED_EMPTY -> "Ignored: the notification had no text."
+                    CaptureDecision.MUTED -> "Skipped: this sender is muted."
                     CaptureDecision.NOTHING_USEFUL -> "Read, but nothing in it was worth keeping."
                     CaptureDecision.DUPLICATE -> "Already recorded in the last 2 minutes."
                 },
@@ -229,8 +239,13 @@ fun ReadingContent(
     onPause: (Boolean) -> Unit = {},
 ) {
     var showAll by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    val searching = query.isNotBlank()
     val visibleOthers = state.others.filter { showAll || it.allowed }
     val hiddenCount = state.others.size - visibleOthers.size
+    val found = (state.sources + state.chats + state.others)
+        .filter { it.app.label.contains(query.trim(), ignoreCase = true) }
+        .sortedBy { it.app.label.lowercase() }
     LazyColumn(
         modifier = Modifier.fillMaxSize().statusBarsPadding(),
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 32.dp),
@@ -238,56 +253,91 @@ fun ReadingContent(
     ) {
         item { ScreenHeader("Notification reading", onBack) }
         item { StatusCard(accessOn, paused, onOpenAccess, Modifier.padding(top = 6.dp).riseIn(0)) }
-        item {
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.fillMaxWidth().riseIn(1),
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Pause reading", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "Nothing is read while this is on.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+        item(key = "search") {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text("Search your apps") },
+                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (searching) {
+                        IconButton(onClick = { query = "" }) { Icon(Icons.Rounded.Close, contentDescription = "Clear search") }
                     }
-                    Switch(checked = paused, onCheckedChange = onPause, modifier = Modifier.labelled("Pause reading"))
+                },
+                singleLine = true,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth().riseIn(1),
+            )
+        }
+        if (!searching) {
+            item {
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.fillMaxWidth().riseIn(1),
+                ) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Pause reading", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Nothing is read while this is on.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(checked = paused, onCheckedChange = onPause, modifier = Modifier.labelled("Pause reading"))
+                    }
                 }
             }
-        }
-        item {
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.fillMaxWidth().riseIn(1),
-            ) {
-                Row(Modifier.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Keep Memora running", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "In App info, set battery use to Unrestricted",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+            item {
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.fillMaxWidth().riseIn(1),
+                ) {
+                    Row(Modifier.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Keep Memora running", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "In App info, set battery use to Unrestricted",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        OutlinedButton(onClick = onOpenBattery) { Text("Open") }
                     }
-                    OutlinedButton(onClick = onOpenBattery) { Text("Open") }
                 }
             }
         }
         if (state.loading) {
             item { Text("Loading apps…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        } else if (searching) {
+            if (found.isEmpty()) {
+                item { NoteCard(null, "No app called \"${query.trim()}\" is installed.") }
+            } else {
+                items(found, key = { "f-" + it.app.pkg }) { AppToggleRow(it, onToggle) }
+            }
         } else {
             item { SectionLabel("Money sources", Modifier.padding(top = 8.dp, bottom = 2.dp)) }
             item {
                 NoteCard(
                     null,
                     "Payment apps usually notify you only when you receive money. To catch money you send, turn on your " +
-                        "SMS app, so Memora can read the bank's message. Personal chats are never saved.",
+                        "SMS app, so Memora can read the bank's message. Personal SMS are never saved.",
                 )
             }
             items(state.sources, key = { "s-" + it.app.pkg }) { AppToggleRow(it, onToggle) }
+            if (state.chats.isNotEmpty()) {
+                item { SectionLabel("Chats", Modifier.padding(top = 8.dp, bottom = 2.dp)) }
+                item {
+                    NoteCard(
+                        null,
+                        "Memora offers a reminder or to-do when a message asks for one, and asks you first. " +
+                            "Chats aren't saved, unless you star that person. You can star or mute people from the bell on Home.",
+                    )
+                }
+                items(state.chats, key = { "c-" + it.app.pkg }) { AppToggleRow(it, onToggle) }
+            }
             if (visibleOthers.isNotEmpty()) {
                 item { SectionLabel("Other apps", Modifier.padding(top = 8.dp, bottom = 2.dp)) }
                 items(visibleOthers, key = { "o-" + it.app.pkg }) { AppToggleRow(it, onToggle) }
@@ -300,7 +350,7 @@ fun ReadingContent(
                 }
             }
         }
-        item { DemoCard(onPayment, onOtp) }
+        if (!searching) item { DemoCard(onPayment, onOtp) }
     }
 }
 
@@ -363,7 +413,11 @@ private fun AppToggleRow(row: AppRow, onToggle: (AppItem, Boolean) -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    if (isSms) "Bank SMS for money you send. $seen" else seen,
+                    when {
+                        isSms -> "Bank SMS for money you send. $seen"
+                        row.app.pkg in CHAT_PACKAGES -> "Reminders and to-dos. $seen"
+                        else -> seen
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

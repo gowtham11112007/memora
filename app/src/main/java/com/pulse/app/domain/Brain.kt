@@ -13,6 +13,7 @@ enum class NoteKind(val label: String) {
     DELIVERY("Deliveries"),
     TICKET("Tickets"),
     EVENT("Events"),
+    PEOPLE("People"),
 }
 
 /** Sorts a message into a kind by its words. Null means it is not worth remembering. */
@@ -74,6 +75,8 @@ sealed interface ChatCommand {
     data class Remember(val text: String) : ChatCommand
     data class Remind(val text: String) : ChatCommand
     data class Find(val query: String) : ChatCommand
+    data class AddTodo(val text: String) : ChatCommand
+    data object ListTodos : ChatCommand
 }
 
 /** Things you can tell Memora to do in the chat. */
@@ -81,6 +84,8 @@ object ChatCommands {
     private val ic = setOf(RegexOption.IGNORE_CASE)
     private val remember = Regex("""^(?:please\s+)?(?:remember|note down|note|save)(?:\s+that)?[:\s]+(.+)$""", ic)
     private val remind = Regex("""^(?:please\s+)?remind me\b.+$""", ic)
+    private val addTodo = Regex("""^(?:add\s+(.+?)\s+to\s+(?:my\s+)?(?:to-?do|tasks?)(?:\s+list)?|to-?do[:\s]+(.+))$""", ic)
+    private val listTodos = Regex("""\b(?:show|what(?:'s| is)(?: on)?|list)\s+(?:on\s+)?my\s+(?:to-?dos?|tasks?)\b|^(?:my\s+)?to-?dos?(?:\s+list)?\??$""", ic)
     private val find = Regex(
         """^(?:find|search(?:\s+for)?|what did i (?:save|note) about|do i have (?:a|any) notes? (?:about|on)|look up my)\s+(.+?)\??$""",
         ic,
@@ -88,6 +93,8 @@ object ChatCommands {
 
     fun parse(text: String): ChatCommand? {
         val t = text.trim()
+        if (listTodos.containsMatchIn(t)) return ChatCommand.ListTodos
+        addTodo.find(t)?.let { return ChatCommand.AddTodo(it.groupValues[1].ifEmpty { it.groupValues[2] }.trim()) }
         remind.find(t)?.let { return ChatCommand.Remind(t) }
         remember.find(t)?.let { return ChatCommand.Remember(it.groupValues[1].trim()) }
         find.find(t)?.let { return ChatCommand.Find(it.groupValues[1].trim()) }
@@ -175,7 +182,7 @@ object OfflineAnswers {
     private val GREETINGS = setOf("hi", "hello", "hey", "good morning", "good evening", "good afternoon", "hii", "namaste")
     private const val HELP =
         "I'm Memora, your second brain. Ask about your spending or reminders, say \"remember that...\" or " +
-            "\"remind me to... tomorrow at 5 pm\", or search your notes with \"find...\". With a Gemini key I can answer general questions too."
+            "\"remind me to... tomorrow at 5 pm\", \"add... to my to-do\", or search your notes with \"find...\". With a Gemini key I can answer general questions too."
 }
 
 /** A small calculator: + - * / ^ and brackets. Null if the expression isn't valid. */

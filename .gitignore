@@ -12,3 +12,7 @@
 secrets.properties
 *.jks
 *.keystore
+# Generated summaries aren't part of the project
+*.pdf
+*.ppt
+*.pptx

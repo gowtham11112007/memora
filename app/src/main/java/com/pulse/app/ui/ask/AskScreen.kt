@@ -74,6 +74,7 @@ import com.pulse.app.domain.MoneyItem
 import com.pulse.app.domain.AskRecord
 import com.pulse.app.domain.AskReminder
 import com.pulse.app.domain.Category
+import com.pulse.app.data.Todo
 import com.pulse.app.domain.ChatCommand
 import com.pulse.app.domain.ChatCommands
 import com.pulse.app.domain.DeadlineExtractor
@@ -216,6 +217,23 @@ class AskViewModel(private val graph: PulseGraph) : ViewModel() {
                 AskAnswer("I found nothing about \"${command.query}\" in your Second Brain.")
             } else {
                 AskAnswer("Here's what I found.", notes = found.take(5).map { it.text })
+            }
+        }
+        is ChatCommand.AddTodo -> {
+            if (PrivacyFilter.isSensitive(command.text)) {
+                AskAnswer("That looks like a password or PIN, so I won't store it.")
+            } else {
+                val text = command.text.replaceFirstChar { it.uppercase() }
+                graph.db.todoDao().insert(Todo(text = text, createdAt = System.currentTimeMillis(), source = MoneyRecord.MANUAL))
+                AskAnswer("Added to your to-do list: $text.")
+            }
+        }
+        ChatCommand.ListTodos -> {
+            val open = graph.db.todoDao().all().filter { it.confirmed && !it.done }
+            if (open.isEmpty()) {
+                AskAnswer("Your to-do list is empty.")
+            } else {
+                AskAnswer(if (open.size == 1) "You have 1 thing to do." else "You have ${open.size} things to do.", notes = open.take(10).map { it.text })
             }
         }
     }

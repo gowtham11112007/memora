@@ -92,6 +92,49 @@ class CaptureRepositoryTest {
     }
 
     @Test
+    fun `one payment reported by SMS, Google Pay and Paytm counts once, with the best name`() = runBlocking {
+        db.appPermissionDao().upsert(AppPermission("paytm", "Paytm", true))
+        val sms = "A/c XX1234 credited with Rs.500.00 on 04-11-26. UPI Ref 612345678901"
+        assertEquals(CaptureDecision.STORE, repo.capture(SMS, "AD-HDFCBK", sms, clock))
+        assertEquals(CaptureDecision.DUPLICATE, repo.capture("gpay", "Rahul Kumar", "Paid you ₹500", clock + 20_000))
+        assertEquals(CaptureDecision.DUPLICATE, repo.capture("paytm", "Paytm", "Received ₹500 from Rahul", clock + 40_000))
+
+        val record = records().single()
+        assertEquals("Rahul Kumar", record.merchant)
+        assertEquals("8901", record.reference)
+        assertEquals(RecordType.INCOME, record.type)
+    }
+
+    @Test
+    fun `the same amount to two different people from two apps counts twice`() = runBlocking {
+        db.appPermissionDao().upsert(AppPermission("paytm", "Paytm", true))
+        repo.capture("gpay", "Google Pay", "Paid ₹100 to Rahul Kumar", clock)
+        repo.capture("paytm", "Paytm", "Paid ₹100 to Priya Sharma", clock + 60_000)
+        assertEquals(2, records().size)
+    }
+
+    @Test
+    fun `different bank references are different payments, even in the same minute`() = runBlocking {
+        repo.capture(SMS, "AD-HDFCBK", "Rs.50 debited from A/c XX1 to Kiran. Ref 111111111111", clock)
+        repo.capture(SMS, "AD-HDFCBK", "Rs.50 debited from A/c XX1 to Kiran. Ref 222222222222", clock + 30_000)
+        assertEquals(2, records().size)
+    }
+
+    @Test
+    fun `matching bank references are one payment, even with different names and a long gap`() = runBlocking {
+        repo.capture("gpay", "Google Pay", "Paid ₹75 to Metro Rail. UPI Ref 412345678901", clock)
+        val decision = repo.capture(SMS, "AD-SBIUPI", "A/C X1 debited by 75.0 trf to DMRC Refno 412345678901", clock + 20 * 60_000)
+        assertEquals(CaptureDecision.DUPLICATE, decision)
+        assertEquals(1, records().size)
+    }
+
+    @Test
+    fun `an SMS title is never taken for the person who paid`() = runBlocking {
+        repo.capture(SMS, "HDFC Chennai", "A/c XX1234 credited with Rs.900.00", clock)
+        assertEquals(null, records().single().merchant)
+    }
+
+    @Test
     fun `the same payment within 2 minutes is ignored, later it counts`() = runBlocking {
         val message = "Paid ₹250 to Swiggy"
         assertEquals(CaptureDecision.STORE, repo.capture("gpay", "Google Pay", message, clock))
@@ -222,13 +265,18 @@ class CaptureRepositoryTest {
             assertEquals(1, migrated.reminderDao().all().size)
             migrated.noteDao().insert(Note(text = "n", kind = "NOTE", createdAt = 1, source = "manual"))
             assertEquals(1, migrated.noteDao().all().size)
+            assertEquals("NONE", migrated.reminderDao().all().single().repeat)
+            migrated.todoDao().insert(Todo(text = "t", createdAt = 1, source = "manual"))
+            migrated.contactRuleDao().upsert(ContactRule("priya", "Priya", true))
+            migrated.activityDao().insert(ActivityEntry(packageName = "gpay", title = "x", outcome = "STORE", at = 1))
+            assertEquals(1, migrated.activityDao().observeRecent().first().size)
         } finally {
             migrated.close()
         }
     }
 
     private fun open(path: String) = Room.databaseBuilder(context, PulseDatabase::class.java, path)
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
         .allowMainThreadQueries()
         .build()
 

@@ -7,6 +7,10 @@
     <!-- Shows reminders. Android 13+ asks the user first. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Lets a reminder fire on time instead of whenever Android next wakes background work. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+
     <!-- Lets us list launchable apps for the Allowed Apps screen without the broad QUERY_ALL_PACKAGES permission. -->
     <queries>
         <intent>
@@ -36,6 +40,10 @@
 
         <receiver
             android:name=".service.ReminderPromptReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".service.ReminderAlarmReceiver"
             android:exported="false" />
 
         <service

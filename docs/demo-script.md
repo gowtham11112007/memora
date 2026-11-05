@@ -16,13 +16,15 @@ Turn Demo mode off afterwards. While it's on, new real payments go into the samp
 
 **Live capture (60 seconds).** Settings → Notification reading → Demo tools. Tap **Payment**, then go Home and show the new record. Then tap **OTP code** and show it was dropped. "An OTP never gets stored. Long reference numbers are masked too." Open Records → Raw text to prove it.
 
-**Second brain (45 seconds).** Open the star tab. Show that bills, deliveries and tickets are sorted by type. Search for something. Open Calendar and confirm a reminder Memora was unsure about.
+**Second brain (45 seconds).** Open the star tab. Show that bills, deliveries and tickets are sorted by type. Search for something. Open Calendar and confirm a reminder Memora was unsure about. Open the To-do list and accept the suggestion from a message.
+
+**You stay in control (30 seconds).** Tap the bell on Home. Show what was read, saved and blocked, and that blocked codes hide their sender. Tap a chat sender and star or mute them. Open Allowed apps and use the search box.
 
 **Ask Memora (60 seconds).** Tap the lime button.
 1. "How much did I spend on food this week?" The answer comes from the phone and shows its source records.
 2. "Remember that my passport is in the blue drawer", then "Where is my passport?"
    Also good: "What's my balance?", "Do I have subscriptions?", "Where do I spend the most?"
-3. "Remind me to call mom tomorrow at 5 pm".
+3. "Remind me to call mom tomorrow at 5 pm", then "Add buy milk to my to-do".
 4. If online: "Explain how UPI works". This one goes to Gemini.
 
 **Close (15 seconds).** "Your life, remembered privately."

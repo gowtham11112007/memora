@@ -1,11 +1,14 @@
 package com.pulse.app
 
 import android.Manifest
+import android.app.Activity
+import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -24,18 +27,29 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,11 +58,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.pulse.app.service.EveningBrief
+import com.pulse.app.ui.activity.ActivityScreen
+import com.pulse.app.ui.activity.PeopleScreen
 import com.pulse.app.ui.ask.AskScreen
+import com.pulse.app.ui.todo.TodoScreen
 import com.pulse.app.ui.onboarding.OnboardingContent
 import com.pulse.app.ui.brain.BrainScreen
 import com.pulse.app.ui.calendar.CalendarScreen
@@ -59,14 +80,26 @@ import com.pulse.app.ui.records.RecordsScreen
 import com.pulse.app.ui.settings.AiScreen
 import com.pulse.app.ui.settings.ReadingScreen
 import com.pulse.app.ui.settings.SettingsScreen
+import com.pulse.app.ui.theme.Ink
+import com.pulse.app.ui.theme.Lime
 import com.pulse.app.ui.theme.PulseTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // With App lock on, the screen is also hidden from recent apps and screenshots.
+        if ((application as PulseApp).graph.aiSettings.isAppLock()) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         setContent { PulseTheme { PulseRoot() } }
     }
+}
+
+/** Decides when App lock asks again. A short trip away, like a share sheet, doesn't count. */
+object AppLockRule {
+    const val GRACE_MS = 60_000L
+
+    fun shouldLock(lockOn: Boolean, leftAt: Long, now: Long): Boolean =
+        lockOn && (leftAt == 0L || now - leftAt > GRACE_MS)
 }
 
 /** Tabs sit on the bottom bar. The others open on top of a tab. */
@@ -79,11 +112,22 @@ enum class Route(val tab: Int?) {
     RECORDS(null),
     READING(null),
     AI(null),
+    ACTIVITY(null),
+    PEOPLE(null),
+    TODO(null),
 }
 
 @Composable
 private fun PulseRoot() {
     var route by rememberSaveable { mutableStateOf(Route.HOME) }
+    // Several pages can open the same sub-page, so Back returns to whichever one you came from.
+    var history by rememberSaveable { mutableStateOf(listOf<Route>()) }
+    val open = { next: Route ->
+        if (next != route) {
+            history = if (next.tab != null) emptyList() else history + route
+            route = next
+        }
+    }
     val snackbar = remember { SnackbarHostState() }
 
     // Reminder popups need this on Android 13+, so ask at launch, not when Calendar first opens.
@@ -99,6 +143,39 @@ private fun PulseRoot() {
     }
 
     val appPrefs = remember { context.getSharedPreferences("app", Context.MODE_PRIVATE) }
+
+    val settings = (context.applicationContext as PulseApp).graph.aiSettings
+    val keyguard = remember { context.getSystemService(KeyguardManager::class.java) }
+    var locked by rememberSaveable { mutableStateOf(false) }
+    val owner = LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                // Saved on disk, so restarting the app can't skip the lock. A phone with no screen lock can't unlock it.
+                Lifecycle.Event.ON_START -> locked = locked || (
+                    keyguard.isDeviceSecure &&
+                        AppLockRule.shouldLock(settings.isAppLock(), appPrefs.getLong("left_at", 0), System.currentTimeMillis())
+                    )
+                Lifecycle.Event.ON_STOP -> appPrefs.edit().putLong("left_at", System.currentTimeMillis()).apply()
+                else -> Unit
+            }
+        }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
+    }
+    val unlockPrompt = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) locked = false
+    }
+    val askToUnlock = {
+        val prompt = keyguard.createConfirmDeviceCredentialIntent("Unlock Memora", "Use your screen lock to continue")
+        if (prompt != null) unlockPrompt.launch(prompt) else locked = false
+    }
+    if (locked) {
+        LaunchedEffect(Unit) { askToUnlock() }
+        LockContent(onUnlock = askToUnlock)
+        return
+    }
+
     var welcomed by rememberSaveable { mutableStateOf(appPrefs.getBoolean("welcomed", false)) }
     if (!welcomed) {
         val finish = {
@@ -108,7 +185,7 @@ private fun PulseRoot() {
         OnboardingContent(
             onTurnOnReading = {
                 finish()
-                route = Route.READING
+                open(Route.READING)
             },
             onTrySample = {
                 finish()
@@ -124,29 +201,63 @@ private fun PulseRoot() {
     }
 
     val back = {
-        route = if (route == Route.READING || route == Route.AI) Route.SETTINGS else Route.HOME
+        route = history.lastOrNull() ?: Route.HOME
+        history = history.dropLast(1)
     }
     BackHandler(enabled = route != Route.HOME, onBack = back)
 
-    PulseShell(route, { route = it }, snackbar) { current ->
+    PulseShell(route, { open(it) }, snackbar) { current ->
         when (current) {
             Route.HOME -> HomeScreen(
-                onViewRecords = { route = Route.RECORDS },
-                onOpenReading = { route = Route.READING },
-                onOpenCalendar = { route = Route.CALENDAR },
-                onAsk = { route = Route.ASK },
+                onViewRecords = { open(Route.RECORDS) },
+                onOpenReading = { open(Route.READING) },
+                onOpenCalendar = { open(Route.CALENDAR) },
+                onAsk = { open(Route.ASK) },
+                onOpenActivity = { open(Route.ACTIVITY) },
             )
-            Route.CALENDAR -> CalendarScreen()
-            Route.ASK -> AskScreen(onOpenAi = { route = Route.AI })
+            Route.CALENDAR -> CalendarScreen(onOpenTodo = { open(Route.TODO) })
+            Route.ASK -> AskScreen(onOpenAi = { open(Route.AI) })
             Route.BRAIN -> BrainScreen()
             Route.SETTINGS -> SettingsScreen(
-                onOpenReading = { route = Route.READING },
-                onOpenAi = { route = Route.AI },
+                onOpenReading = { open(Route.READING) },
+                onOpenAi = { open(Route.AI) },
+                onOpenPeople = { open(Route.PEOPLE) },
+                onOpenActivity = { open(Route.ACTIVITY) },
             )
             Route.RECORDS -> RecordsScreen(onBack = back)
             Route.READING -> ReadingScreen(snackbar, onBack = back)
             Route.AI -> AiScreen(onBack = back)
+            Route.ACTIVITY -> ActivityScreen(
+                onBack = back,
+                onOpenPeople = { open(Route.PEOPLE) },
+                onOpenApps = { open(Route.READING) },
+            )
+            Route.PEOPLE -> PeopleScreen(onBack = back)
+            Route.TODO -> TodoScreen(onBack = back)
         }
+    }
+}
+
+@Composable
+fun LockContent(onUnlock: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().background(Ink).padding(32.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(Icons.Rounded.Lock, contentDescription = null, Modifier.size(48.dp), tint = Lime)
+        Text("Memora is locked", Modifier.padding(top = 18.dp), style = MaterialTheme.typography.headlineMedium, color = Color.White)
+        Text(
+            "Use your screen lock to open it.",
+            Modifier.padding(top = 6.dp, bottom = 26.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.White.copy(alpha = 0.72f),
+        )
+        Button(
+            onClick = onUnlock,
+            colors = ButtonDefaults.buttonColors(containerColor = Lime, contentColor = Ink),
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Unlock") }
     }
 }
 

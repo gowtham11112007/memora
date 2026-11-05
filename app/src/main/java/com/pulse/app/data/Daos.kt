@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
 import androidx.room.Upsert
+import com.pulse.app.domain.RecordType
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -34,11 +35,11 @@ interface MoneyRecordDao {
     @Query("SELECT * FROM record ORDER BY occurredAt DESC")
     suspend fun all(): List<MoneyRecord>
 
-    @Query(
-        "SELECT COUNT(*) FROM record WHERE packageName = :pkg AND amountPaise = :amount AND merchant IS :merchant " +
-            "AND occurredAt BETWEEN :from AND :until",
-    )
-    suspend fun countSimilar(pkg: String, amount: Long, merchant: String?, from: Long, until: Long): Int
+    @Update
+    suspend fun update(record: MoneyRecord)
+
+    @Query("SELECT * FROM record WHERE amountPaise = :amount AND type = :type AND occurredAt BETWEEN :from AND :until ORDER BY occurredAt")
+    suspend fun sameAmount(amount: Long, type: RecordType, from: Long, until: Long): List<MoneyRecord>
 }
 
 @Dao
@@ -99,6 +100,57 @@ interface ReminderDao {
 
     @Query("SELECT COUNT(*) FROM task WHERE title = :title AND dueAt = :dueAt")
     suspend fun countSame(title: String, dueAt: Long): Int
+}
+
+@Dao
+interface ContactRuleDao {
+    @Upsert
+    suspend fun upsert(rule: ContactRule)
+
+    @Delete
+    suspend fun delete(rule: ContactRule)
+
+    @Query("SELECT * FROM contact_rule ORDER BY starred DESC, label")
+    fun observeAll(): Flow<List<ContactRule>>
+
+    @Query("SELECT * FROM contact_rule")
+    suspend fun all(): List<ContactRule>
+}
+
+@Dao
+interface ActivityDao {
+    @Insert
+    suspend fun insert(entry: ActivityEntry)
+
+    @Query("SELECT * FROM activity ORDER BY at DESC, id DESC LIMIT 200")
+    fun observeRecent(): Flow<List<ActivityEntry>>
+
+    @Query("DELETE FROM activity WHERE at < :cutoff")
+    suspend fun deleteOlderThan(cutoff: Long)
+}
+
+@Dao
+interface TodoDao {
+    @Insert
+    suspend fun insert(todo: Todo): Long
+
+    @Update
+    suspend fun update(todo: Todo)
+
+    @Delete
+    suspend fun delete(todo: Todo)
+
+    @Query("SELECT * FROM todo ORDER BY done, createdAt DESC")
+    fun observeAll(): Flow<List<Todo>>
+
+    @Query("SELECT * FROM todo ORDER BY done, createdAt DESC")
+    suspend fun all(): List<Todo>
+
+    @Query("SELECT * FROM todo WHERE id = :id")
+    suspend fun byId(id: Long): Todo?
+
+    @Query("SELECT COUNT(*) FROM todo WHERE text = :text")
+    suspend fun countSame(text: String): Int
 }
 
 @Dao

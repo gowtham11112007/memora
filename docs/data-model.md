@@ -1,4 +1,15 @@
-# Data model (Room, database version 4)
+# Data model (Room, database version 6)
+
+`MIGRATION_5_6` adds `record.reference`: the last 4 digits of the bank's reference, used to spot one payment reported by several apps.
+
+## contact_rule (added by `MIGRATION_4_5`)
+`name` (TEXT PK, lowercase), `label`, `starred`. True means starred, false means muted.
+
+## activity (added by `MIGRATION_4_5`)
+`id`, `packageName`, `title` (masked sender, blank if sensitive), `outcome` (a CaptureDecision name), `at` (indexed). Never the message. Deleted after 7 days.
+
+## todo (added by `MIGRATION_4_5`)
+`id`, `text`, `done`, `confirmed`, `createdAt` (indexed), `source`. Unconfirmed means suggested from a message and waiting for an answer.
 
 ## note (added by `MIGRATION_3_4`)
 `id`, `text`, `kind` (a NoteKind name), `createdAt` (indexed), `pinned`, `source`. Typed by the user, or a short masked line from a message.
@@ -12,7 +23,7 @@ Both keep existing data, and tests prove they match the entities.
 `merchant` (TEXT PK, lowercase), `category` (TEXT). The user's choice beats the built-in dictionary.
 
 ## task
-`id`, `title`, `dueAt` (indexed), `confidence`, `confirmed`, `done`, `source`. Only confirmed tasks are scheduled.
+`id`, `title`, `dueAt` (indexed), `confidence`, `confirmed`, `done`, `source`, `repeat` (NONE, DAILY, WEEKLY or MONTHLY). Only confirmed tasks are scheduled.
 
 ## app_seen
 `packageName` (TEXT PK), `lastSeenAt`, `seenCount`. Time and count only, never content.

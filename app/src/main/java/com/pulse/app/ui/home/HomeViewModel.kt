@@ -1,8 +1,10 @@
 package com.pulse.app.ui.home
 
+import android.content.Context
 import androidx.lifecycle.viewModelScope
 import com.pulse.app.PulseGraph
 import com.pulse.app.data.MoneyRecord
+import com.pulse.app.data.Todo
 import com.pulse.app.domain.Balance
 import com.pulse.app.domain.BalanceView
 import com.pulse.app.domain.Category
@@ -43,11 +45,39 @@ data class HomeUiState(
     val isDemo: Boolean = false,
     val nextReminder: Reminder? = null,
     val insights: List<String> = emptyList(),
+    /** Suggestions still waiting for a yes or no, in case the popup was missed. */
+    val needsAnswer: Int = 0,
+    /** Notifications read since the bell page was last opened. */
+    val newReads: Int = 0,
 )
+
+/** A suggestion whose date has already passed is no longer worth asking about. */
+fun countNeedsAnswer(reminders: List<Reminder>, todos: List<Todo>, now: Long): Int =
+    reminders.count { !it.confirmed && !it.done && it.dueAt >= now } + todos.count { !it.confirmed }
 
 class HomeViewModel(private val app: PulseGraph) : RecordActionsViewModel(app) {
     private val range = MutableStateFlow(TimeRange.TODAY)
     private val clockHour = MutableStateFlow(currentHour())
+    private val prefs = app.appContext.getSharedPreferences("app", Context.MODE_PRIVATE)
+    private val bellKey = if (app.demo) "bell_seen_demo" else "bell_seen"
+    private val bellSeenAt = MutableStateFlow(prefs.getLong(bellKey, 0))
+
+    fun markBellSeen() {
+        val now = System.currentTimeMillis()
+        prefs.edit().putLong(bellKey, now).apply()
+        bellSeenAt.value = now
+    }
+
+    private data class Extras(val reminders: List<Reminder>, val needsAnswer: Int, val newReads: Int)
+
+    private val extras = combine(
+        graph.db.reminderDao().observeAll(),
+        graph.db.todoDao().observeAll(),
+        graph.db.activityDao().observeRecent(),
+        bellSeenAt,
+    ) { reminders, todos, activity, seenAt ->
+        Extras(reminders, countNeedsAnswer(reminders, todos, System.currentTimeMillis()), activity.count { it.at > seenAt })
+    }
 
     private fun currentHour() = "${LocalDate.now()}-${LocalTime.now().hour}"
 
@@ -62,8 +92,9 @@ class HomeViewModel(private val app: PulseGraph) : RecordActionsViewModel(app) {
         graph.db.moneyRecordDao().observeAll(),
         graph.db.merchantRuleDao().observeAll(),
         app.moneyPrefs.state,
-        graph.db.reminderDao().observeAll(),
-    ) { selected, records, ruleRows, money, reminders ->
+        extras,
+    ) { selected, records, ruleRows, money, extra ->
+        val reminders = extra.reminders
         val rules = ruleRows.associate { it.merchant to Category.valueOf(it.category) }
         val items = records.map { MoneyItem(it.amountPaise, it.merchant, it.type, it.occurredAt) }
         val today = LocalDate.now()
@@ -78,6 +109,8 @@ class HomeViewModel(private val app: PulseGraph) : RecordActionsViewModel(app) {
                 else -> "Good evening"
             },
             isDemo = app.demo,
+            needsAnswer = extra.needsAnswer,
+            newReads = extra.newReads,
             nextReminder = reminders.filter { it.confirmed && !it.done && it.dueAt >= nowMillis }.minByOrNull { it.dueAt },
             insights = listOfNotNull(
                 Insights.weekChange(items, today, zone),

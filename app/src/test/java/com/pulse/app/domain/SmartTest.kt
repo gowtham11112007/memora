@@ -13,6 +13,127 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 
 class SmartTest {
+    private data class Person(val name: String)
+
+    @org.junit.Test
+    fun `the money form changes only what you edited`() {
+        val form = { balance: Long?, budget: Long, balanceText: String, budgetText: String ->
+            com.pulse.app.ui.home.moneyChange(balance, budget, balanceText, budgetText)
+        }
+        assertFalse("nothing edited", form(4235000, 1500000, "42,350", "15,000").hasChanges)
+        assertEquals(null, form(4235000, 1500000, "42,350", "20,000").balancePaise)
+        assertEquals(2000000L, form(4235000, 1500000, "42,350", "20,000").budgetPaise)
+        assertEquals(5000000L, form(4235000, 1500000, "50000", "15,000").balancePaise)
+        assertEquals("a cleared budget means no budget", 0L, form(4235000, 1500000, "42,350", "").budgetPaise)
+        assertEquals("a real zero balance is allowed", 0L, form(4235000, 0, "0", "").balancePaise)
+        assertFalse("a balance can't be left empty once set", form(4235000, 0, "", "").valid)
+        assertTrue("an unset balance can stay unset", form(null, 0, "", "").valid)
+        assertFalse("not an amount", form(null, 0, "1.2.3", "").valid)
+    }
+
+    @org.junit.Test
+    fun `reports are matched by reference first, then by app, time and name`() {
+        val report = { pkg: String, name: String?, ref: String?, at: Long -> PaymentMatch.Report(pkg, name, ref, at) }
+        val minute = 60_000L
+        assertTrue(PaymentMatch.same(report("a", "Rahul", "1111", 0), report("b", "Priya", "1111", 50 * minute)))
+        assertFalse(PaymentMatch.same(report("a", "Rahul", "1111", 0), report("b", "Rahul", "2222", 0)))
+        assertTrue("name unknown", PaymentMatch.same(report("a", null, null, 0), report("b", "Rahul", null, 9 * minute)))
+        assertFalse("too long apart", PaymentMatch.same(report("a", null, null, 0), report("b", "Rahul", null, 11 * minute)))
+        assertTrue("first name only", PaymentMatch.same(report("a", "Rahul", null, 0), report("b", "RAHUL KUMAR", null, 0)))
+        assertTrue("UPI id", PaymentMatch.same(report("a", "rahulkumar", null, 0), report("b", "Rahul Kumar", null, 0)))
+        assertTrue("a number could be anyone", PaymentMatch.same(report("a", "••••3210", null, 0), report("b", "Rahul", null, 0)))
+        assertFalse("different people", PaymentMatch.same(report("a", "Rahul", null, 0), report("b", "Priya", null, 0)))
+        assertFalse("one app, later", PaymentMatch.same(report("a", "Rahul", null, 0), report("a", "Rahul", null, 3 * minute)))
+        assertEquals("Rahul Kumar", PaymentMatch.betterName("Rahul", "Rahul Kumar"))
+        assertEquals("Rahul", PaymentMatch.betterName("Rahul", "••••3210"))
+        assertEquals("Rahul", PaymentMatch.betterName(null, "Rahul"))
+    }
+
+    @org.junit.Test
+    fun `student and meet-up messages become reminders, plain chatter doesn't`() {
+        val now = java.time.LocalDateTime.of(2026, 11, 4, 14, 0) // A Wednesday.
+        val due = { text: String -> DeadlineExtractor.extract("Rahul", text, now)?.dueAt }
+        org.junit.Assert.assertEquals(java.time.LocalDateTime.of(2026, 11, 6, 9, 0), due("Assignment 3 submission on Friday"))
+        org.junit.Assert.assertEquals(java.time.LocalDateTime.of(2026, 11, 12, 10, 0), due("Viva on 12 Nov at 10 am"))
+        org.junit.Assert.assertEquals(java.time.LocalDateTime.of(2026, 11, 5, 17, 0), due("Let's meet tomorrow at 5 pm"))
+        org.junit.Assert.assertEquals(java.time.LocalDateTime.of(2026, 11, 9, 9, 0), due("Quiz next Monday"))
+        org.junit.Assert.assertEquals(null, due("See you tomorrow at the match"))
+        org.junit.Assert.assertEquals(null, due("Assignment was easy"))
+    }
+
+    @org.junit.Test
+    fun `app lock asks after a minute away, and not during a short trip`() {
+        val now = 1_000_000L
+        org.junit.Assert.assertFalse(com.pulse.app.AppLockRule.shouldLock(false, 0, now))
+        org.junit.Assert.assertTrue("a fresh start always asks", com.pulse.app.AppLockRule.shouldLock(true, 0, now))
+        org.junit.Assert.assertFalse(com.pulse.app.AppLockRule.shouldLock(true, now - 30_000, now))
+        org.junit.Assert.assertTrue(com.pulse.app.AppLockRule.shouldLock(true, now - 61_000, now))
+    }
+
+    @org.junit.Test
+    fun `only live suggestions need an answer`() {
+        val reminder = { confirmed: Boolean, due: Long, done: Boolean ->
+            com.pulse.app.data.Reminder(title = "x", dueAt = due, confidence = 0.7, confirmed = confirmed, done = done, source = "s")
+        }
+        val todo = { confirmed: Boolean -> com.pulse.app.data.Todo(text = "t", confirmed = confirmed, createdAt = 1, source = "s") }
+        val count = com.pulse.app.ui.home.countNeedsAnswer(
+            listOf(reminder(false, 200, false), reminder(true, 200, false), reminder(false, 50, false), reminder(false, 200, true)),
+            listOf(todo(false), todo(true)),
+            now = 100,
+        )
+        org.junit.Assert.assertEquals(2, count)
+    }
+
+    @org.junit.Test
+    fun `contact names match whole words, and the longest name wins`() {
+        val people = listOf(Person("Rahul"), Person("Rahul Kumar"), Person("Ram"))
+        org.junit.Assert.assertEquals("Rahul", ContactMatcher.match("Rahul", people) { it.name }?.name)
+        org.junit.Assert.assertEquals("Rahul Kumar", ContactMatcher.match("rahul kumar", people) { it.name }?.name)
+        org.junit.Assert.assertEquals("Rahul", ContactMatcher.match("Family: Rahul", people) { it.name }?.name)
+        org.junit.Assert.assertEquals(null, ContactMatcher.match("Ramesh", people) { it.name })
+        org.junit.Assert.assertEquals(null, ContactMatcher.match(null, people) { it.name })
+    }
+
+    @org.junit.Test
+    fun `repeats move to the next future date`() {
+        val zone = java.time.ZoneOffset.UTC
+        val at = { y: Int, m: Int, d: Int -> java.time.LocalDateTime.of(y, m, d, 9, 0).toInstant(zone).toEpochMilli() }
+        val due = at(2026, 1, 31)
+        org.junit.Assert.assertEquals(null, Repeat.NONE.next(due, due, zone))
+        org.junit.Assert.assertEquals(at(2026, 2, 1), Repeat.DAILY.next(due, due, zone))
+        org.junit.Assert.assertEquals(at(2026, 2, 7), Repeat.WEEKLY.next(due, due, zone))
+        org.junit.Assert.assertEquals("a short month keeps a real date", at(2026, 2, 28), Repeat.MONTHLY.next(due, due, zone))
+        org.junit.Assert.assertEquals("skips dates missed while the phone was off", at(2026, 2, 14), Repeat.WEEKLY.next(due, at(2026, 2, 10), zone))
+        org.junit.Assert.assertEquals(Repeat.NONE, Repeat.of("nonsense"))
+    }
+
+    @org.junit.Test
+    fun `task predictor spots requests but not chatter or adverts`() {
+        listOf(
+            "Don't forget to bring the charger",
+            "Please submit the assignment",
+            "Kindly review the attached report",
+            "Can you call the plumber",
+            "Action required on your account form",
+            "Remember to water the plants",
+        ).forEach { org.junit.Assert.assertEquals(it, it, TaskPredictor.suggestion(it)) }
+        listOf(
+            "Good morning!",
+            "I sent the photos",
+            "Please pay now and get 20% off",
+            "Don't forget our big sale this weekend",
+        ).forEach { org.junit.Assert.assertEquals(it, null, TaskPredictor.suggestion(it)) }
+    }
+
+    @org.junit.Test
+    fun `chat understands to-do commands`() {
+        org.junit.Assert.assertEquals(ChatCommand.AddTodo("buy milk"), ChatCommands.parse("add buy milk to my to-do list"))
+        org.junit.Assert.assertEquals(ChatCommand.AddTodo("call mom"), ChatCommands.parse("todo: call mom"))
+        org.junit.Assert.assertEquals(ChatCommand.ListTodos, ChatCommands.parse("show my to-dos"))
+        org.junit.Assert.assertEquals(ChatCommand.ListTodos, ChatCommands.parse("what's on my todo list?"))
+        org.junit.Assert.assertEquals(ChatCommand.ListTodos, ChatCommands.parse("todo list"))
+    }
+
     private val zone = ZoneOffset.UTC
     private val today = LocalDate.of(2026, 11, 20)
     private fun at(date: LocalDate) = date.atTime(10, 0).toInstant(zone).toEpochMilli()

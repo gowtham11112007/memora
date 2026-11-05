@@ -9,8 +9,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         RawEvent::class, AppPermission::class, MoneyRecord::class, DropLog::class,
         MerchantRule::class, Reminder::class, AppSeen::class, Note::class,
+        ContactRule::class, ActivityEntry::class, Todo::class,
     ],
-    version = 4,
+    version = 6,
     exportSchema = false,
 )
 abstract class PulseDatabase : RoomDatabase() {
@@ -22,6 +23,37 @@ abstract class PulseDatabase : RoomDatabase() {
     abstract fun reminderDao(): ReminderDao
     abstract fun appSeenDao(): AppSeenDao
     abstract fun noteDao(): NoteDao
+    abstract fun contactRuleDao(): ContactRuleDao
+    abstract fun activityDao(): ActivityDao
+    abstract fun todoDao(): TodoDao
+}
+
+/** Adds the bank reference, so one payment reported by several apps is counted once. */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `record` ADD COLUMN `reference` TEXT")
+    }
+}
+
+/** Adds people rules, the notifications-read log, to-dos and repeating reminders. */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `contact_rule` (`name` TEXT NOT NULL, `label` TEXT NOT NULL, " +
+                "`starred` INTEGER NOT NULL, PRIMARY KEY(`name`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `activity` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`packageName` TEXT NOT NULL, `title` TEXT NOT NULL, `outcome` TEXT NOT NULL, `at` INTEGER NOT NULL)",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_activity_at` ON `activity` (`at`)")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `todo` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `text` TEXT NOT NULL, " +
+                "`done` INTEGER NOT NULL, `confirmed` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `source` TEXT NOT NULL)",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_todo_createdAt` ON `todo` (`createdAt`)")
+        db.execSQL("ALTER TABLE `task` ADD COLUMN `repeat` TEXT NOT NULL DEFAULT 'NONE'")
+    }
 }
 
 /** Adds the Second Brain notes. */

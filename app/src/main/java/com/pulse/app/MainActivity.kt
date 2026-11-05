@@ -85,12 +85,26 @@ import com.pulse.app.ui.theme.Lime
 import com.pulse.app.ui.theme.PulseTheme
 
 class MainActivity : ComponentActivity() {
+    /** The page a tapped notification asked for. */
+    private val openRequest = mutableStateOf<String?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        openRequest.value = intent.getStringExtra(EXTRA_OPEN)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Only on a fresh start, so turning the phone doesn't reopen the page.
+        if (savedInstanceState == null) openRequest.value = intent.getStringExtra(EXTRA_OPEN)
         enableEdgeToEdge()
         // With App lock on, the screen is also hidden from recent apps and screenshots.
         if ((application as PulseApp).graph.aiSettings.isAppLock()) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        setContent { PulseTheme { PulseRoot() } }
+        setContent { PulseTheme { PulseRoot(openRequest.value) { openRequest.value = null } } }
+    }
+
+    companion object {
+        const val EXTRA_OPEN = "open"
     }
 }
 
@@ -118,7 +132,7 @@ enum class Route(val tab: Int?) {
 }
 
 @Composable
-private fun PulseRoot() {
+private fun PulseRoot(openRequest: String?, onOpened: () -> Unit) {
     var route by rememberSaveable { mutableStateOf(Route.HOME) }
     // Several pages can open the same sub-page, so Back returns to whichever one you came from.
     var history by rememberSaveable { mutableStateOf(listOf<Route>()) }
@@ -129,6 +143,12 @@ private fun PulseRoot() {
         }
     }
     val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(openRequest) {
+        Route.entries.firstOrNull { it.name == openRequest }?.let {
+            open(it)
+            onOpened()
+        }
+    }
 
     // Reminder popups need this on Android 13+, so ask at launch, not when Calendar first opens.
     val context = LocalContext.current

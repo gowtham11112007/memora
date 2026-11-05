@@ -12,6 +12,8 @@ import com.pulse.app.domain.Extraction
 import com.pulse.app.domain.NoteKind
 import com.pulse.app.domain.PaymentMatch
 import com.pulse.app.domain.PrivacyFilter
+import com.pulse.app.domain.RecordType
+import com.pulse.app.domain.formatRupees
 import com.pulse.app.domain.Retention
 import com.pulse.app.domain.TaskPredictor
 import kotlinx.coroutines.CancellationException
@@ -70,6 +72,11 @@ class CaptureRepository(
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, AiReading>) = size > RECENT_READINGS
     }
 
+    private val recentReadTimes = ArrayDeque<Long>()
+
+    // What the current notification became, for the bell page. Only used inside the lock.
+    private var lastDetail = ""
+
     suspend fun capture(pkg: String, title: String?, text: String?, postedAt: Long): CaptureDecision {
         // The network call happens outside the lock, so a slow reply never holds up a payment.
         val reading = readSmartly(pkg, title, text)
@@ -93,9 +100,11 @@ class CaptureRepository(
 
         val key = "$sender\n$body".hashCode()
         synchronized(recentReadings) { recentReadings[key] }?.let { return it }
+        if (!withinReadingBudget(now())) return null
         val localNow = LocalDateTime.ofInstant(Instant.ofEpochMilli(now()), zone)
         val reading = try {
-            withContext(Dispatchers.IO) { smartReader(PrivacyFilter.mask(sender), PrivacyFilter.mask(body), localNow) }
+            val masked = PrivacyFilter.mask(body).take(MAX_SMART_TEXT)
+            withContext(Dispatchers.IO) { smartReader(PrivacyFilter.mask(sender), masked, localNow) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -105,8 +114,17 @@ class CaptureRepository(
         return reading
     }
 
+    /** A busy group chat could use up the free quota. Past this limit the word rules handle the rest. */
+    private fun withinReadingBudget(t: Long): Boolean = synchronized(recentReadTimes) {
+        while (recentReadTimes.isNotEmpty() && recentReadTimes.first() <= t - READING_WINDOW_MS) recentReadTimes.removeFirst()
+        if (recentReadTimes.size >= MAX_READS_PER_WINDOW) return false
+        recentReadTimes.addLast(t)
+        true
+    }
+
     private suspend fun handle(pkg: String, title: String?, text: String?, postedAt: Long, reading: AiReading?): CaptureDecision {
         if (isPaused()) return CaptureDecision.PAUSED
+        lastDetail = ""
         val allowed = db.appPermissionDao().isAllowed(pkg) == true
         val gate = CaptureGate.decide(allowed, title, text)
         val t = now()
@@ -135,7 +153,7 @@ class CaptureRepository(
     /** The bell page's history. It names the sender only, never the message, and lasts 7 days. */
     private suspend fun logActivity(pkg: String, title: String?, decision: CaptureDecision, t: Long) {
         val shown = if (decision == CaptureDecision.DROPPED_SENSITIVE) "" else PrivacyFilter.mask(cleanSender(title))
-        db.activityDao().insert(ActivityEntry(packageName = pkg, title = shown, outcome = decision.name, at = t))
+        db.activityDao().insert(ActivityEntry(packageName = pkg, title = shown, outcome = decision.name, at = t, detail = lastDetail))
         db.activityDao().deleteOlderThan(t - ACTIVITY_KEEP_MS)
     }
 
@@ -195,9 +213,15 @@ class CaptureRepository(
             }
             if (kind != null) saveNote(title, summary ?: text, kind, pkg, t)
             db.rawEventDao().deleteOlderThan(t - Retention.RAW_EVENT_MS)
-            todo = todoText?.let { saveSuggestedTodo(it, pkg, t) }
-            deadline?.let { saveReminder(it, pkg) }
+            todo = todoText?.let { saveSuggestedTodo(it, pkg, t, title) }
+            deadline?.let { saveReminder(it, pkg, title) }
         }
+        lastDetail = listOfNotNull(
+            money?.let { describe(it, merchant) },
+            deadline?.let { "Reminder: " + PrivacyFilter.mask(it.title) },
+            todoText?.let { "To-do: " + PrivacyFilter.mask(it) },
+            kind?.let { "Saved in ${it.label}" },
+        ).joinToString(" · ")
         reminder?.let(onReminderDetected)
         todo?.let(onTodoSuggested)
         if (money != null) onRecordSaved()
@@ -207,10 +231,15 @@ class CaptureRepository(
     /** WhatsApp adds a count to the sender's name, such as "Rahul (2 messages)". */
     private fun cleanSender(title: String?) = title.orEmpty().trim().replace(Regex("""\s*\(\d+ messages?\)$"""), "")
 
-    private suspend fun saveSuggestedTodo(text: String, pkg: String, t: Long): Todo? {
+    private fun describe(money: Extraction, name: String?): String {
+        val direction = if (money.type == RecordType.INCOME) "from" else "to"
+        return formatRupees(money.amountPaise) + (name?.let { " $direction $it" } ?: "")
+    }
+
+    private suspend fun saveSuggestedTodo(text: String, pkg: String, t: Long, sender: String): Todo? {
         val line = PrivacyFilter.mask(text)
         if (db.todoDao().countSame(line) > 0) return null
-        val todo = Todo(text = line, confirmed = false, createdAt = t, source = pkg)
+        val todo = Todo(text = line, confirmed = false, createdAt = t, source = pkg, origin = PrivacyFilter.mask(sender))
         return todo.copy(id = db.todoDao().insert(todo))
     }
 
@@ -231,7 +260,7 @@ class CaptureRepository(
      * Detected reminders start unconfirmed: Memora asks first, and schedules only on a yes.
      * With Automatic reminders on, a clear date from a non-chat app is set straight away, with Undo.
      */
-    private suspend fun saveReminder(deadline: Deadline, pkg: String): Reminder? {
+    private suspend fun saveReminder(deadline: Deadline, pkg: String, sender: String): Reminder? {
         val title = PrivacyFilter.mask(deadline.title)
         val dueAt = deadline.dueAt.atZone(zone).toInstant().toEpochMilli()
         if (db.reminderDao().countSame(title, dueAt) > 0) return null
@@ -241,6 +270,7 @@ class CaptureRepository(
             confidence = deadline.confidence,
             confirmed = !isPersonalApp(pkg) && !deadline.needsConfirmation && autoConfirmSure(),
             source = pkg,
+            origin = PrivacyFilter.mask(sender),
         )
         return reminder.copy(id = db.reminderDao().insert(reminder))
     }
@@ -260,12 +290,16 @@ class CaptureRepository(
             reference = existing.reference ?: reference,
         )
         if (merged != existing) dao.update(merged)
+        lastDetail = describe(money, merged.merchant) + ", already recorded"
         return true
     }
 
     private companion object {
         const val RECENT_READINGS = 50
         const val MIN_SMART_READ = 8
+        const val MAX_SMART_TEXT = 1000
+        const val MAX_READS_PER_WINDOW = 10
+        const val READING_WINDOW_MS = 60_000L
         const val MAX_REMINDER_TITLE = 70
 
         // Below Deadline.CONFIDENT, so a date from Gemini always asks first, even with Automatic reminders on.

@@ -23,6 +23,7 @@ import com.pulse.app.MainActivity
 import com.pulse.app.PulseApp
 import com.pulse.app.PulseGraph
 import com.pulse.app.R
+import com.pulse.app.Route
 import com.pulse.app.data.Reminder
 import com.pulse.app.domain.Repeat
 import kotlinx.coroutines.CoroutineScope
@@ -144,12 +145,13 @@ object ReminderDelivery {
         val open = PendingIntent.getActivity(
             context,
             reminder.id.toInt(),
-            Intent(context, MainActivity::class.java),
+            Intent(context, MainActivity::class.java).putExtra(MainActivity.EXTRA_OPEN, Route.CALENDAR.name),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val notification = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("Reminder")
+            .setSubText(ReminderPrompt.fromLine(context, reminder.source, reminder.origin))
             .setContentText(reminder.title)
             .setStyle(NotificationCompat.BigTextStyle().bigText(reminder.title))
             .setPriority(NotificationCompat.PRIORITY_HIGH)

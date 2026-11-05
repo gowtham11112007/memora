@@ -16,6 +16,27 @@ class SmartTest {
     private data class Person(val name: String)
 
     @org.junit.Test
+    fun `says where a suggestion came from`() {
+        assertEquals("From Rahul on WhatsApp", originLine("Rahul", "WhatsApp"))
+        assertEquals("From Google Pay", originLine("Google Pay", "Google Pay"))
+        assertEquals("From Gmail", originLine("", "Gmail"))
+        assertEquals("From Priya", originLine("Priya", null))
+        assertEquals(null, originLine("", null))
+    }
+
+    @org.junit.Test
+    fun `payments after a bank SMS still change the balance`() {
+        val settings = MoneySettings(bankPaise = 500000, bankAt = 1000)
+        val before = MoneyItem(10000, "Counted by the bank", EXPENSE, 999)
+        val spent = MoneyItem(20000, "Swiggy", EXPENSE, 2000)
+        val got = MoneyItem(5000, "Rahul", INCOME, 3000)
+        assertEquals(500000L, Balance.compute(settings, listOf(before))?.paise)
+        assertEquals("From your latest bank SMS", Balance.compute(settings, listOf(before))?.source)
+        assertEquals(485000L, Balance.compute(settings, listOf(before, spent, got))?.paise)
+        assertEquals("From your latest bank SMS, and payments since", Balance.compute(settings, listOf(spent))?.source)
+    }
+
+    @org.junit.Test
     fun `chat understands every common way of asking for a reminder`() {
         listOf(
             "Set a reminder to pay rent tomorrow at 9 am" to "Pay rent tomorrow at 9 am",

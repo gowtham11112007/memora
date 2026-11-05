@@ -147,6 +147,14 @@ class LlmClientTest {
         assertEquals(java.time.LocalDateTime.of(2026, 11, 6, 9, 0), delivery?.remindAt)
 
         started = System.currentTimeMillis()
+        val water = SmartReader.reminderTime(router.readingModels(), "remind me to drink water in 2 hours", now)
+        println("LIVE reminder ${System.currentTimeMillis() - started}ms: $water")
+        assertEquals(java.time.LocalDateTime.of(2026, 11, 5, 12, 5), water?.remindAt)
+        val alarm = SmartReader.reminderTime(router.readingModels(), "set an alarm for 6 am", now)
+        println("LIVE alarm: $alarm")
+        assertEquals(java.time.LocalDateTime.of(2026, 11, 6, 6, 0), alarm?.remindAt)
+
+        started = System.currentTimeMillis()
         val tanglish = SmartReader.read(listOf(GroqClient(com.pulse.app.BuildConfig.GROQ_KEY, jsonOnly = true)), "Karthik", "nalaiku exam iruku da", now)
         println("LIVE Groq backup ${System.currentTimeMillis() - started}ms: $tanglish")
         assertTrue(tanglish != null)

@@ -1,6 +1,7 @@
 package com.pulse.app.ui.calendar
 
 import android.Manifest
+import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.pm.PackageManager
 import android.os.Build
@@ -90,6 +91,7 @@ import com.pulse.app.ui.components.NoteCard
 import com.pulse.app.ui.components.SectionLabel
 import com.pulse.app.ui.components.bounceClick
 import com.pulse.app.ui.components.hatched
+import com.pulse.app.ui.components.rememberOriginLine
 import com.pulse.app.ui.components.rememberUndo
 import com.pulse.app.ui.components.riseIn
 import com.pulse.app.ui.theme.Ink
@@ -171,6 +173,27 @@ class CalendarViewModel(private val graph: PulseGraph) : ViewModel() {
         }
     }
 
+    /** Choosing a time is also a yes, so it's confirmed and scheduled. */
+    fun changeTime(reminder: Reminder, at: LocalDateTime) {
+        viewModelScope.launch {
+            val updated = reminder.copy(dueAt = at.atZone(zone).toInstant().toEpochMilli(), confirmed = true, done = false)
+            dao.update(updated)
+            graph.reminders.schedule(updated)
+            com.pulse.app.service.ReminderPrompt.dismiss(graph.appContext, reminder.id)
+        }
+    }
+
+    fun toTodo(reminder: Reminder) {
+        viewModelScope.launch {
+            dao.delete(reminder)
+            graph.reminders.cancel(reminder.id)
+            graph.db.todoDao().insert(
+                com.pulse.app.data.Todo(text = reminder.title, createdAt = System.currentTimeMillis(), source = reminder.source, origin = reminder.origin),
+            )
+            com.pulse.app.service.ReminderPrompt.dismiss(graph.appContext, reminder.id)
+        }
+    }
+
     fun toggleDone(reminder: Reminder) {
         viewModelScope.launch {
             // Ticking a repeating reminder finishes this one and moves it to its next date.
@@ -227,6 +250,8 @@ fun CalendarScreen(onOpenTodo: () -> Unit) {
             undo("Reminder deleted") { vm.restore(it) }
         },
         onOpenTodo = onOpenTodo,
+        onChangeTime = vm::changeTime,
+        onToTodo = vm::toTodo,
     )
     if (adding) AddReminderSheet(state.selected, state.today, { adding = false }, vm::add)
 }
@@ -242,6 +267,8 @@ fun CalendarContent(
     onConfirm: (Reminder) -> Unit,
     onDelete: (Reminder) -> Unit,
     onOpenTodo: () -> Unit = {},
+    onChangeTime: (Reminder, LocalDateTime) -> Unit = { _, _ -> },
+    onToTodo: (Reminder) -> Unit = {},
 ) {
     val zone = ZoneId.systemDefault()
     val byDay = state.reminders.groupBy { it.dueAt.toLocalDate(zone) }
@@ -270,7 +297,7 @@ fun CalendarContent(
         if (waiting.isNotEmpty()) {
             item { SectionLabel("Needs your answer", Modifier.riseIn(1)) }
             items(waiting, key = { "w-${it.id}" }) { reminder ->
-                ReminderRow(reminder, onToggle, onConfirm, onDelete, Modifier.animateItem(), showDate = true)
+                ReminderRow(reminder, onToggle, onConfirm, onDelete, Modifier.animateItem(), showDate = true, onChangeTime = onChangeTime, onToTodo = onToTodo)
             }
         }
         item { MonthCard(state, byDay.keys, onSelect, Modifier.riseIn(1)) }
@@ -305,7 +332,7 @@ fun CalendarContent(
             item { NoteCard(null, "No reminders on this day. Tap + to add one.") }
         } else {
             items(dayReminders, key = { it.id }) { reminder ->
-                ReminderRow(reminder, onToggle, onConfirm, onDelete, Modifier.animateItem())
+                ReminderRow(reminder, onToggle, onConfirm, onDelete, Modifier.animateItem(), onChangeTime = onChangeTime, onToTodo = onToTodo)
             }
         }
     }
@@ -493,7 +520,11 @@ private fun ReminderRow(
     onDelete: (Reminder) -> Unit,
     modifier: Modifier,
     showDate: Boolean = false,
+    onChangeTime: (Reminder, LocalDateTime) -> Unit = { _, _ -> },
+    onToTodo: (Reminder) -> Unit = {},
 ) {
+    val context = LocalContext.current
+    val from = rememberOriginLine(reminder.source, reminder.origin)
     val scheme = MaterialTheme.colorScheme
     val unconfirmed = !reminder.confirmed
     val fill = when {
@@ -538,15 +569,41 @@ private fun ReminderRow(
                     tint = ink.copy(alpha = 0.7f),
                 )
             }
+            if (from != null) {
+                Text(from, Modifier.padding(start = 4.dp), style = MaterialTheme.typography.labelMedium, color = ink)
+            }
             if (unconfirmed) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "Is this date right? Memora won't remind you until you confirm.",
-                        Modifier.weight(1f).padding(start = 4.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = ink.copy(alpha = 0.8f),
-                    )
-                    TextButton(onClick = { onConfirm(reminder) }) { Text("Confirm", color = ink) }
+                Text(
+                    "Is this right? Memora won't remind you until you say yes.",
+                    Modifier.padding(start = 4.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ink.copy(alpha = 0.8f),
+                )
+            }
+            if (!reminder.done) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (unconfirmed) TextButton(onClick = { onConfirm(reminder) }) { Text("Yes, remind me", color = ink) }
+                    TextButton(
+                        onClick = {
+                            val at = Instant.ofEpochMilli(reminder.dueAt).atZone(ZoneId.systemDefault()).toLocalDateTime()
+                            DatePickerDialog(
+                                context,
+                                { _, year, month, day ->
+                                    TimePickerDialog(
+                                        context,
+                                        { _, hour, minute -> onChangeTime(reminder, LocalDateTime.of(year, month + 1, day, hour, minute)) },
+                                        at.hour,
+                                        at.minute,
+                                        false,
+                                    ).show()
+                                },
+                                at.year,
+                                at.monthValue - 1,
+                                at.dayOfMonth,
+                            ).show()
+                        },
+                    ) { Text("Change time", color = ink) }
+                    TextButton(onClick = { onToTodo(reminder) }) { Text("To-do", color = ink) }
                 }
             }
         }

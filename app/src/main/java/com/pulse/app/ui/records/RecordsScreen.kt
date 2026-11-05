@@ -102,7 +102,7 @@ fun RecordsScreen(onBack: () -> Unit) {
     RecordsContent(state, vm::select, onBack) { open = it }
     val undo = rememberUndo()
     open?.let { record ->
-        RecordDetailSheet(record, state.rules, { open = null }, vm::setCategory) {
+        RecordDetailSheet(record, state.rules, { open = null }, vm::setCategory, vm::rename) {
             vm.delete(it)
             undo("Record deleted") { vm.restore(it) }
         }

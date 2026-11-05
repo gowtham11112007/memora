@@ -40,7 +40,7 @@ object DemoData {
         val reminders = listOf(
             Reminder(title = "Pay electricity bill", dueAt = now + 2 * DAY, confidence = 0.9, confirmed = true, source = DEMO),
             Reminder(title = "Submit lab record", dueAt = now + DAY, confidence = 1.0, confirmed = true, source = DEMO),
-            Reminder(title = "Renew insurance", dueAt = now + 3 * DAY, confidence = 0.7, confirmed = false, source = DEMO),
+            Reminder(title = "Renew insurance", dueAt = now + 3 * DAY, confidence = 0.7, confirmed = false, source = DEMO, origin = "LIC India"),
             Reminder(title = "Call the bank", dueAt = now + HOUR, confidence = 1.0, confirmed = true, done = true, source = DEMO),
             Reminder(title = "Pay hostel rent", dueAt = now + 5 * DAY, confidence = 1.0, confirmed = true, source = DEMO, repeat = "MONTHLY"),
         )
@@ -48,15 +48,15 @@ object DemoData {
             Todo(text = "Buy a birthday gift for Amma", createdAt = now - HOUR, source = DEMO),
             Todo(text = "Finish the hackathon slides", createdAt = now - 2 * HOUR, source = DEMO),
             Todo(text = "Back up my phone", done = true, createdAt = now - DAY, source = DEMO),
-            Todo(text = "Please submit the signed form to the office", confirmed = false, createdAt = now - 3 * HOUR, source = "com.whatsapp"),
+            Todo(text = "Please submit the signed form to the office", confirmed = false, createdAt = now - 3 * HOUR, source = "com.whatsapp", origin = "Priya"),
         )
         val people = listOf(
             ContactRule("priya", "Priya", starred = true),
             ContactRule("college offers", "College Offers", starred = false),
         )
         val activity = listOf(
-            ActivityEntry(packageName = "com.google.android.apps.nbu.paisa.user", title = "Google Pay", outcome = "STORE", at = now - 5 * 60_000),
-            ActivityEntry(packageName = "com.whatsapp", title = "Priya", outcome = "STORE", at = now - 40 * 60_000),
+            ActivityEntry(packageName = "com.google.android.apps.nbu.paisa.user", title = "Google Pay", outcome = "STORE", at = now - 5 * 60_000, detail = "₹250 to Swiggy"),
+            ActivityEntry(packageName = "com.whatsapp", title = "Priya", outcome = "STORE", at = now - 40 * 60_000, detail = "To-do: Please submit the signed form to the office"),
             ActivityEntry(packageName = "com.whatsapp", title = "College Offers", outcome = "MUTED", at = now - HOUR),
             ActivityEntry(packageName = "com.google.android.apps.messaging", title = "", outcome = "DROPPED_SENSITIVE", at = now - 2 * HOUR),
             ActivityEntry(packageName = "org.telegram.messenger", title = "Rahul", outcome = "NOTHING_USEFUL", at = now - 3 * HOUR),

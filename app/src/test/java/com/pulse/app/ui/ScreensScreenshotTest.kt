@@ -121,7 +121,7 @@ class ScreensScreenshotTest {
                     reminders = listOf(
                         Reminder(1, "Electricity bill due", at(10), 0.9, true, false, "sms"),
                         Reminder(2, "Submit lab record", at(17), 1.0, true, true, "manual"),
-                        Reminder(3, "Renew insurance", at(19), 0.7, false, false, "sms"),
+                        Reminder(3, "Renew insurance", at(19), 0.7, false, false, "sms", origin = "LIC India"),
                     ),
                     spentByDay = mapOf(today to 145000L, today.minusDays(1) to 50000L),
                 ),
@@ -286,8 +286,8 @@ class ScreensScreenshotTest {
 
     private val activityState = com.pulse.app.ui.activity.ActivityUiState(
         entries = listOf(
-            com.pulse.app.data.ActivityEntry(1, "com.googlepay", "Google Pay", "STORE", now),
-            com.pulse.app.data.ActivityEntry(2, "com.whatsapp", "Priya", "STORE", now),
+            com.pulse.app.data.ActivityEntry(1, "com.googlepay", "Google Pay", "STORE", now, "₹250 to Swiggy"),
+            com.pulse.app.data.ActivityEntry(2, "com.whatsapp", "Priya", "STORE", now, "Reminder: Parcel arriving tomorrow at 9 AM · Saved in Deliveries"),
             com.pulse.app.data.ActivityEntry(3, "com.whatsapp", "College Offers", "MUTED", now),
             com.pulse.app.data.ActivityEntry(4, "com.google.android.apps.messaging", "", "DROPPED_SENSITIVE", now),
             com.pulse.app.data.ActivityEntry(5, "org.telegram", "Hackathon Team", "NOTHING_USEFUL", now),
@@ -319,7 +319,7 @@ class ScreensScreenshotTest {
 
     @Test fun todo() = shot("todo") {
         val todos = listOf(
-            com.pulse.app.data.Todo(1, "Please submit the signed form to the office", false, false, now, "com.whatsapp"),
+            com.pulse.app.data.Todo(1, "Please submit the signed form to the office", false, false, now, "com.whatsapp", "Priya"),
             com.pulse.app.data.Todo(2, "Buy a birthday gift for Amma", false, true, now, "manual"),
             com.pulse.app.data.Todo(3, "Finish the hackathon slides", false, true, now, "manual"),
             com.pulse.app.data.Todo(4, "Back up my phone", true, true, now, "manual"),

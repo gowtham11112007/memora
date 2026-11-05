@@ -1,4 +1,6 @@
-# Data model (Room, database version 6)
+# Data model (Room, database version 7)
+
+`MIGRATION_6_7` adds `task.origin`, `todo.origin` and `activity.detail`: who a suggestion came from, and what a notification became.
 
 `MIGRATION_5_6` adds `record.reference`: the last 4 digits of the bank's reference, used to spot one payment reported by several apps.
 

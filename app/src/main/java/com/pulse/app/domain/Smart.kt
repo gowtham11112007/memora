@@ -6,6 +6,14 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
+/** "From Rahul on WhatsApp". Null if there's nothing to say. */
+fun originLine(sender: String, app: String?): String? = when {
+    sender.isNotBlank() && app != null && !sender.equals(app, ignoreCase = true) -> "From $sender on $app"
+    sender.isNotBlank() -> "From $sender"
+    app != null -> "From $app"
+    else -> null
+}
+
 /** Finds whether a notification's title names a starred or muted person. */
 object ContactMatcher {
     /** Returns the longest matching name, so "Rahul Kumar" wins over "Rahul". Names match whole words. */

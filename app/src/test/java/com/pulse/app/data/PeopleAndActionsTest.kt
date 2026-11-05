@@ -228,6 +228,37 @@ class PeopleAndActionsTest {
     }
 
     @Test
+    fun `a busy group chat can't use up the AI quota`() = runBlocking {
+        geminiReply = AiReading(null, null, null, null)
+        val repo = smartRepo()
+        repeat(15) { repo.capture(WHATSAPP, "Family group", "Message number $it from the group", clock) }
+        assertEquals(10, sentToGemini.size)
+    }
+
+    @Test
+    fun `very long messages are cut before sending`() = runBlocking {
+        geminiReply = AiReading(null, null, null, null)
+        smartRepo().capture(WHATSAPP, "Rahul", "word ".repeat(1000), clock)
+        assertEquals(1000, sentToGemini.single().second.length)
+    }
+
+    @Test
+    fun `suggestions remember who sent them, and the bell says what each became`() = runBlocking {
+        repo.capture(WHATSAPP, "Rahul (2 messages)", "Your parcel is arriving tomorrow at 5 pm", clock)
+        assertEquals("Rahul", db.reminderDao().all().single().origin)
+        val made = log().single().detail
+        assertTrue(made, made.contains("Reminder: Your parcel") && made.contains("Saved in Deliveries"))
+
+        repo.capture(WHATSAPP, "Priya", "Please send the form to the office", clock)
+        assertEquals("Priya", db.todoDao().all().single().origin)
+
+        repo.capture("gpay", "Google Pay", "Paid ₹250.00 to Swiggy", clock + 1000)
+        assertTrue(log().any { it.detail == "₹250 to Swiggy" })
+        repo.capture(WHATSAPP, "Arun", "Good morning machi", clock + 2000)
+        assertEquals("nothing useful leaves no text", "", log().first { it.title == "Arun" }.detail)
+    }
+
+    @Test
     fun `when Gemini fails, the word rules take over`() = runBlocking {
         geminiReply = null
         assertEquals(CaptureDecision.STORE, smartRepo().capture(WHATSAPP, "Rahul", "Your parcel is arriving tomorrow", clock))

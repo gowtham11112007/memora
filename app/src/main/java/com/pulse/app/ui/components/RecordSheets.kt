@@ -65,6 +65,11 @@ open class RecordActionsViewModel(protected val graph: PulseGraph) : ViewModel()
     fun delete(record: MoneyRecord) {
         viewModelScope.launch { graph.db.moneyRecordDao().delete(record) }
     }
+
+    /** Lets the user correct a sender or payee that was read wrongly or not at all. */
+    fun rename(record: MoneyRecord, name: String) {
+        viewModelScope.launch { graph.db.moneyRecordDao().update(record.copy(merchant = name.trim())) }
+    }
 }
 
 /** "1,250.50" -> 125050 paise. Null if it is not a positive amount. */
@@ -127,16 +132,29 @@ fun RecordDetailSheet(
     rules: Map<String, Category>,
     onDismiss: () -> Unit,
     onCategory: (String, Category) -> Unit,
+    onRename: (MoneyRecord, String) -> Unit = { _, _ -> },
     onDelete: (MoneyRecord) -> Unit,
 ) {
     val name = record.merchant
+    var newName by remember { mutableStateOf(name.orEmpty()) }
+    val renamed = newName.trim().isNotEmpty() && newName.trim() != name
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp).navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(name ?: "Unknown", style = MaterialTheme.typography.titleLarge)
             Text(formatRupees(record.amountPaise), style = MaterialTheme.typography.headlineMedium)
+            OutlinedTextField(
+                value = newName,
+                onValueChange = { newName = it },
+                label = { Text(if (record.type == RecordType.EXPENSE) "Paid to" else "Received from") },
+                placeholder = { Text("Add a name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (renamed) {
+                Button(onClick = { onRename(record, newName); onDismiss() }, modifier = Modifier.fillMaxWidth()) { Text("Save name") }
+            }
             if (name != null && record.type == RecordType.EXPENSE) {
                 Text(
                     "Category. Your choice applies to every payment to $name.",

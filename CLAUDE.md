@@ -12,7 +12,7 @@ Target device: Nothing Phone (3a), Android 16. minSdk 26, targetSdk 35, package 
 - Rules/regex first, LLM later and optional. Never let an LLM write or run raw SQL.
 - Keep code minimal. Every regex change needs a unit test with a real sample message.
 - Keep only money, reminder, to-do and useful note messages, from allowed apps. SMS and chat apps need a bank alert before anything counts as money. Everyday chat matches no rule and is dropped.
-- The notifications-read log holds the sender and outcome only, never the message, for 7 days.
+- The notifications-read log holds the sender, outcome and what was saved for 7 days, never a message that had nothing useful.
 - Don't run `adb shell dumpsys notification` on the Nothing 3a: it drops the debugging connection.
 
 ## Structure (app/src/main/java/com/pulse/app)

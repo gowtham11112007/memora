@@ -61,8 +61,12 @@ object Balance {
      * forward by the records since then, so missed payments make it drift. Null if neither exists.
      */
     fun compute(settings: MoneySettings, items: List<MoneyItem>): BalanceView? = when {
-        settings.bankAt > 0 && settings.bankAt >= settings.openingAt ->
-            BalanceView(settings.bankPaise, "From your latest bank SMS")
+        settings.bankAt > 0 && settings.bankAt >= settings.openingAt -> {
+            // Payments after that SMS still count, or the balance would freeze until the next one.
+            val since = items.filter { it.at > settings.bankAt }
+            val change = since.sumOf { if (it.type == RecordType.INCOME) it.amountPaise else -it.amountPaise }
+            BalanceView(settings.bankPaise + change, if (since.isEmpty()) "From your latest bank SMS" else "From your latest bank SMS, and payments since")
+        }
         settings.openingAt > 0 -> {
             val since = items.filter { it.at >= settings.openingAt }
             val change = since.sumOf { if (it.type == RecordType.INCOME) it.amountPaise else -it.amountPaise }

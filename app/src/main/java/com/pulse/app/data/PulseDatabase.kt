@@ -11,7 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MerchantRule::class, Reminder::class, AppSeen::class, Note::class,
         ContactRule::class, ActivityEntry::class, Todo::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class PulseDatabase : RoomDatabase() {
@@ -26,6 +26,15 @@ abstract class PulseDatabase : RoomDatabase() {
     abstract fun contactRuleDao(): ContactRuleDao
     abstract fun activityDao(): ActivityDao
     abstract fun todoDao(): TodoDao
+}
+
+/** Remembers who each suggestion came from, and what each notification became. */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `task` ADD COLUMN `origin` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `todo` ADD COLUMN `origin` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `activity` ADD COLUMN `detail` TEXT NOT NULL DEFAULT ''")
+    }
 }
 
 /** Adds the bank reference, so one payment reported by several apps is counted once. */

@@ -16,8 +16,8 @@ android {
         applicationId = "com.pulse.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
         // The key lives in secrets.properties, which Git ignores, so it's in the APK but never in the repo.
         val secrets = Properties()
         rootProject.file("secrets.properties").takeIf { it.exists() }?.inputStream()?.use { secrets.load(it) }
@@ -28,6 +28,8 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Not debuggable, so it runs much faster. The same key lets it update over the debug build.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 

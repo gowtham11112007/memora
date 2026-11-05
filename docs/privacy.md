@@ -31,7 +31,7 @@
 - Star and mute apply only to chat and SMS apps, so a name can't hide a payment alert.
 
 ## Notifications-read list (the bell)
-- One line per notification from an allowed app: app, masked sender or title, what happened, and when. Never the message.
+- One line per notification from an allowed app: app, masked sender or title, what happened, what it became, and when. A message with nothing useful leaves no text here. The saved line stays for up to 7 days, even if the note itself is deleted sooner.
 - The sender is blank for anything blocked as sensitive. Apps that aren't allowed are never listed.
 - Deleted after 7 days, and by "Delete my data".
 

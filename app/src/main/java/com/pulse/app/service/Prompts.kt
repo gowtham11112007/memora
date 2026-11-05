@@ -23,6 +23,7 @@ import com.pulse.app.MainActivity
 import com.pulse.app.PulseApp
 import com.pulse.app.PulseGraph
 import com.pulse.app.R
+import com.pulse.app.Route
 import com.pulse.app.data.PulseDatabase
 import com.pulse.app.data.Reminder
 import com.pulse.app.data.ResendClient
@@ -33,6 +34,7 @@ import com.pulse.app.domain.Repeat
 import com.pulse.app.domain.Summaries
 import com.pulse.app.domain.TimeRange
 import com.pulse.app.domain.formatRupees
+import com.pulse.app.domain.originLine
 import com.pulse.app.domain.startDate
 import com.pulse.app.domain.startMillis
 import kotlinx.coroutines.CoroutineScope
@@ -73,18 +75,29 @@ object ReminderPrompt {
         return allowed
     }
 
-    private fun builder(context: Context, code: Int, title: String, text: String) =
+    /** "From Rahul on WhatsApp", so a suggestion is never a mystery. */
+    fun fromLine(context: Context, source: String, sender: String): String? {
+        val pm = context.packageManager
+        val app = if (source == "manual" || source == "demo") {
+            null
+        } else {
+            runCatching { pm.getApplicationLabel(pm.getApplicationInfo(source, 0)).toString() }.getOrNull()
+        }
+        return originLine(sender, app)
+    }
+
+    private fun builder(context: Context, code: Int, title: String, text: String, from: String?, opens: Route = Route.CALENDAR) =
         NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
-            .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentText(from?.let { "$it: $text" } ?: text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(listOfNotNull(from, text).joinToString("\n")))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(
                 PendingIntent.getActivity(
                     context,
                     code,
-                    Intent(context, MainActivity::class.java),
+                    Intent(context, MainActivity::class.java).putExtra(MainActivity.EXTRA_OPEN, opens.name),
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
                 ),
             )
@@ -96,11 +109,12 @@ object ReminderPrompt {
         val due = Instant.ofEpochMilli(reminder.dueAt).atZone(ZoneId.systemDefault())
             .format(DateTimeFormatter.ofPattern("EEE d MMM, h:mm a", Locale.ENGLISH))
         val code = notificationId(reminder.id)
+        val from = fromLine(context, reminder.source, reminder.origin)
         val notification = if (reminder.confirmed) {
-            builder(context, code, "Reminder set for $due", reminder.title)
+            builder(context, code, "Reminder set for $due", reminder.title, from)
                 .addAction(0, "Undo", action(context, ACTION_NO, reminder.id))
         } else {
-            builder(context, code, "Set a reminder for $due?", reminder.title)
+            builder(context, code, "Set a reminder for $due?", reminder.title, from)
                 .addAction(0, "Yes, remind me", action(context, ACTION_YES, reminder.id))
                 .addAction(0, "To-do instead", action(context, ACTION_TO_TODO, reminder.id))
                 .addAction(0, "No", action(context, ACTION_NO, reminder.id))
@@ -112,7 +126,7 @@ object ReminderPrompt {
     fun showTodo(context: Context, todo: Todo) {
         if (!ready(context)) return
         val code = todoNotificationId(todo.id)
-        val notification = builder(context, code, "Is this something to do?", todo.text)
+        val notification = builder(context, code, "Is this something to do?", todo.text, fromLine(context, todo.source, todo.origin), Route.TODO)
             .addAction(0, "Add to-do", action(context, ACTION_TODO_YES, todo.id))
             .addAction(0, "Remind me tomorrow", action(context, ACTION_TODO_REMIND, todo.id))
             .addAction(0, "No", action(context, ACTION_TODO_NO, todo.id))
@@ -167,7 +181,7 @@ class NotificationActions(
             ReminderPrompt.ACTION_TO_TODO -> {
                 dao.delete(reminder)
                 cancel(reminder.id)
-                db.todoDao().insert(Todo(text = reminder.title, createdAt = now, source = reminder.source))
+                db.todoDao().insert(Todo(text = reminder.title, createdAt = now, source = reminder.source, origin = reminder.origin))
             }
             // A repeating reminder has already moved to its next date, so Done has nothing more to do.
             ReminderPrompt.ACTION_DONE -> if (!repeating) {
@@ -199,7 +213,7 @@ class NotificationActions(
             ReminderPrompt.ACTION_TODO_YES -> db.todoDao().update(todo.copy(confirmed = true))
             ReminderPrompt.ACTION_TODO_REMIND -> {
                 val due = Instant.ofEpochMilli(now).atZone(zone).toLocalDate().plusDays(1).atTime(9, 0).atZone(zone).toInstant().toEpochMilli()
-                val reminder = Reminder(title = todo.text, dueAt = due, confidence = 1.0, confirmed = true, source = todo.source)
+                val reminder = Reminder(title = todo.text, dueAt = due, confidence = 1.0, confirmed = true, source = todo.source, origin = todo.origin)
                 schedule(reminder.copy(id = db.reminderDao().insert(reminder)))
                 db.todoDao().delete(todo)
             }

@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -73,6 +74,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
+import android.util.LruCache
+import androidx.compose.ui.graphics.ImageBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.pulse.app.data.MoneyRecord
 import com.pulse.app.domain.RecordType
 import com.pulse.app.domain.formatRupees
@@ -349,13 +354,19 @@ fun NoteCard(title: String?, body: String, modifier: Modifier = Modifier) {
 }
 
 /** The real icon of an installed app, on a soft lavender tile. Blank tile if it cannot be loaded. */
+private val appIcons = LruCache<String, ImageBitmap>(150)
+
 @Composable
 fun AppIcon(packageName: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val bitmap = remember(packageName) {
-        runCatching {
-            context.packageManager.getApplicationIcon(packageName).toBitmap(96, 96).asImageBitmap()
-        }.getOrNull()
+    // Loaded off the main thread and kept in memory, so a long list of apps scrolls smoothly.
+    val bitmap by produceState(appIcons.get(packageName), packageName) {
+        if (value == null) {
+            value = withContext(Dispatchers.IO) {
+                runCatching { context.packageManager.getApplicationIcon(packageName).toBitmap(96, 96).asImageBitmap() }
+                    .getOrNull()?.also { appIcons.put(packageName, it) }
+            }
+        }
     }
     Box(
         modifier = modifier
@@ -364,8 +375,15 @@ fun AppIcon(packageName: String, modifier: Modifier = Modifier) {
             .background(MaterialTheme.colorScheme.primaryContainer),
         contentAlignment = Alignment.Center,
     ) {
-        if (bitmap != null) Image(bitmap = bitmap, contentDescription = null, modifier = Modifier.size(32.dp))
+        if (bitmap != null) Image(bitmap = bitmap!!, contentDescription = null, modifier = Modifier.size(32.dp))
     }
+}
+
+/** "From Rahul on WhatsApp", for anything that came from a message. */
+@Composable
+fun rememberOriginLine(source: String, sender: String): String? {
+    val app = rememberAppLabel(source)
+    return com.pulse.app.domain.originLine(sender, app.takeUnless { source == "manual" || source == "demo" })
 }
 
 @Composable

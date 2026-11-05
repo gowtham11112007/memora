@@ -141,7 +141,7 @@ fun HomeScreen(
     if (adding) AddRecordSheet(onDismiss = { adding = false }, onSave = vm::addManual)
     if (editingMoney) EditMoneySheet(state, { editingMoney = false }, vm::saveMoney)
     openRecord?.let { record ->
-        RecordDetailSheet(record, state.rules, { openRecord = null }, vm::setCategory) {
+        RecordDetailSheet(record, state.rules, { openRecord = null }, vm::setCategory, vm::rename) {
             vm.delete(it)
             undo("Record deleted") { vm.restore(it) }
         }

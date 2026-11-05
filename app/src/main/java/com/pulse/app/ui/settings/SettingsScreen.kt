@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -347,11 +349,12 @@ fun SettingsContent(
                         "• Long reference numbers are masked.\n" +
                         "• Message text is deleted after 24 hours.\n" +
                         "• Short lines from useful messages stay in Second Brain until you delete them. This includes useful lines from chats you allow, and longer messages from people you star.\n" +
-                        "• The notifications-read list keeps sender names, never messages, for 7 days.\n" +
+                        "• The notifications-read list keeps the sender and what was saved for 7 days. It never keeps messages that had nothing useful.\n" +
                         "• General questions you type are sent to those services too. Google's free tier may use this data to improve its products, so don't type private details.\n" +
                         "• Codes, passwords, bank alerts and muted people are never sent to them.\n" +
                         "• If you turn on email, weekly totals are sent through Resend. They name no merchants or messages.\n" +
                         "• The database is not encrypted yet. App lock guards the screens, not the stored file.",
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
                 )
             },
         )

@@ -52,6 +52,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.pulse.app.PulseApp
 import com.pulse.app.PulseGraph
 import com.pulse.app.data.ActivityEntry
+import com.pulse.app.data.AppPermission
 import com.pulse.app.data.ContactRule
 import com.pulse.app.data.isPersonalApp
 import com.pulse.app.domain.CaptureDecision
@@ -85,7 +86,7 @@ enum class ActivityFilter(val label: String) {
     BLOCKED("Blocked"),
 }
 
-class ActivityViewModel(graph: PulseGraph) : ViewModel() {
+class ActivityViewModel(private val graph: PulseGraph) : ViewModel() {
     private val rules = graph.db.contactRuleDao()
 
     val state = combine(graph.db.activityDao().observeRecent(), rules.observeAll()) { entries, people ->
@@ -100,6 +101,10 @@ class ActivityViewModel(graph: PulseGraph) : ViewModel() {
 
     fun remove(rule: ContactRule) {
         viewModelScope.launch { rules.delete(rule) }
+    }
+
+    fun stopReading(pkg: String, label: String) {
+        viewModelScope.launch { graph.db.appPermissionDao().upsert(AppPermission(pkg, label, false)) }
     }
 
     fun restore(rule: ContactRule) {
@@ -118,36 +123,53 @@ private fun rememberActivityViewModel(): ActivityViewModel {
 fun ActivityScreen(onBack: () -> Unit, onOpenPeople: () -> Unit, onOpenApps: () -> Unit) {
     val vm = rememberActivityViewModel()
     val state by vm.state.collectAsStateWithLifecycle()
-    var sender by remember { mutableStateOf<String?>(null) }
-    ActivityContent(state, onBack, onOpenPeople, onOpenApps, onSender = { sender = it })
+    var opened by remember { mutableStateOf<ActivityEntry?>(null) }
+    ActivityContent(state, onBack, onOpenPeople, onOpenApps, onEntry = { opened = it })
 
-    sender?.let { name ->
-        val rule = ContactMatcher.match(name, state.rules) { it.name }
-        ModalBottomSheet(onDismissRequest = { sender = null }, containerColor = MaterialTheme.colorScheme.surface) {
+    opened?.let { entry ->
+        val name = entry.title
+        val appLabel = rememberAppLabel(entry.packageName)
+        val canManage = isPersonalApp(entry.packageName) && name.isNotBlank()
+        val rule = if (canManage) ContactMatcher.match(name, state.rules) { it.name } else null
+        ModalBottomSheet(onDismissRequest = { opened = null }, containerColor = MaterialTheme.colorScheme.surface) {
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp).navigationBarsPadding(),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(name, style = MaterialTheme.typography.titleLarge)
+                Text(name.ifBlank { "Hidden for your privacy" }, style = MaterialTheme.typography.titleLarge)
                 Text(
-                    "Star saves their longer messages to Second Brain. Mute means Memora skips their messages.",
+                    "From $appLabel · ${formatCaptureTime(entry.at)}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Button(
-                    onClick = { vm.setRule(name, true); sender = null },
-                    enabled = rule?.starred != true,
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text(if (rule?.starred == true) "Starred" else "Star") }
-                FilledTonalButton(
-                    onClick = { vm.setRule(name, false); sender = null },
-                    enabled = rule?.starred != false,
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text(if (rule?.starred == false) "Muted" else "Mute") }
-                if (rule != null) {
-                    OutlinedButton(onClick = { vm.remove(rule); sender = null }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Treat them normally")
+                Text(outcomeLabel(entry.outcome), style = MaterialTheme.typography.titleMedium)
+                if (entry.detail.isNotBlank()) Text(entry.detail, style = MaterialTheme.typography.bodyMedium)
+                if (canManage) {
+                    Text(
+                        "Star saves their longer messages to Second Brain. Mute means Memora skips their messages.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = { vm.setRule(name, true); opened = null },
+                            enabled = rule?.starred != true,
+                            modifier = Modifier.weight(1f),
+                        ) { Text(if (rule?.starred == true) "Starred" else "Star") }
+                        FilledTonalButton(
+                            onClick = { vm.setRule(name, false); opened = null },
+                            enabled = rule?.starred != false,
+                            modifier = Modifier.weight(1f),
+                        ) { Text(if (rule?.starred == false) "Muted" else "Mute") }
                     }
+                    if (rule != null) {
+                        OutlinedButton(onClick = { vm.remove(rule); opened = null }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Treat them normally")
+                        }
+                    }
+                }
+                OutlinedButton(onClick = { vm.stopReading(entry.packageName, appLabel); opened = null }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Stop reading $appLabel")
                 }
             }
         }
@@ -173,7 +195,7 @@ fun ActivityContent(
     onBack: () -> Unit,
     onOpenPeople: () -> Unit,
     onOpenApps: () -> Unit,
-    onSender: (String) -> Unit,
+    onEntry: (ActivityEntry) -> Unit,
 ) {
     var filter by rememberSaveable { mutableStateOf(ActivityFilter.ALL) }
     val starred = { entry: ActivityEntry ->
@@ -220,7 +242,7 @@ fun ActivityContent(
                 )
             }
         } else {
-            items(shown, key = { it.id }) { entry -> EntryRow(entry, starred(entry), onSender, Modifier.animateItem()) }
+            items(shown, key = { it.id }) { entry -> EntryRow(entry, starred(entry), onEntry, Modifier.animateItem()) }
         }
     }
 }
@@ -265,16 +287,15 @@ private fun ShortcutTile(title: String, note: String, modifier: Modifier, onClic
 }
 
 @Composable
-private fun EntryRow(entry: ActivityEntry, starred: Boolean, onSender: (String) -> Unit, modifier: Modifier) {
+private fun EntryRow(entry: ActivityEntry, starred: Boolean, onEntry: (ActivityEntry) -> Unit, modifier: Modifier) {
     val scheme = MaterialTheme.colorScheme
     val appLabel = rememberAppLabel(entry.packageName)
-    val canManage = isPersonalApp(entry.packageName) && entry.title.isNotBlank()
     val (pillFill, pillInk) = when {
         entry.outcome == CaptureDecision.STORE.name -> scheme.tertiaryContainer to scheme.onTertiaryContainer
         isBlocked(entry) -> scheme.errorContainer to scheme.onErrorContainer
         else -> scheme.surfaceVariant to scheme.onSurfaceVariant
     }
-    val tap = if (canManage) Modifier.bounceClick { onSender(entry.title) } else Modifier
+    val tap = Modifier.bounceClick { onEntry(entry) }
     Surface(shape = MaterialTheme.shapes.medium, color = scheme.surface, modifier = modifier.then(tap).fillMaxWidth()) {
         Row(
             Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -301,6 +322,9 @@ private fun EntryRow(entry: ActivityEntry, starred: Boolean, onSender: (String) 
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (entry.detail.isNotBlank()) {
+                    Text(entry.detail, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
                 Box(
                     Modifier
                         .padding(top = 2.dp)

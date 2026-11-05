@@ -70,6 +70,8 @@ data class Reminder(
     val source: String,
     /** A Repeat name: NONE, DAILY, WEEKLY or MONTHLY. */
     @ColumnInfo(defaultValue = "NONE") val repeat: String = "NONE",
+    /** Who the message came from, if it came from a message. */
+    @ColumnInfo(defaultValue = "") val origin: String = "",
 )
 
 /** A person the user starred or muted, matched against the name a notification shows. */
@@ -92,6 +94,8 @@ data class ActivityEntry(
     /** A CaptureDecision name. */
     val outcome: String,
     val at: Long,
+    /** What this notification became, such as "Reminder: Pay rent". Blank if nothing was kept. */
+    @ColumnInfo(defaultValue = "") val detail: String = "",
 )
 
 /** A to-do. An unconfirmed one was suggested from a message and is waiting for a yes. */
@@ -103,6 +107,8 @@ data class Todo(
     val confirmed: Boolean = true,
     val createdAt: Long,
     val source: String,
+    /** Who the message came from, if it came from a message. */
+    @ColumnInfo(defaultValue = "") val origin: String = "",
 )
 
 /** Something to remember: typed by the user, or a short masked line from a useful notification. */

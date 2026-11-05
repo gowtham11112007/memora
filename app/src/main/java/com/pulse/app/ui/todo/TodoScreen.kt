@@ -51,6 +51,7 @@ import com.pulse.app.ui.components.CircleIconButton
 import com.pulse.app.ui.components.NoteCard
 import com.pulse.app.ui.components.ScreenHeader
 import com.pulse.app.ui.components.SectionLabel
+import com.pulse.app.ui.components.rememberOriginLine
 import com.pulse.app.ui.components.rememberUndo
 import com.pulse.app.ui.components.riseIn
 import kotlinx.coroutines.flow.SharingStarted
@@ -78,6 +79,20 @@ class TodoViewModel(private val graph: PulseGraph) : ViewModel() {
         }
     }
 
+    /** Turns a suggestion into a reminder for tomorrow morning. */
+    fun remind(todo: Todo) {
+        viewModelScope.launch {
+            val zone = java.time.ZoneId.systemDefault()
+            val due = java.time.LocalDate.now(zone).plusDays(1).atTime(9, 0).atZone(zone).toInstant().toEpochMilli()
+            val reminder = com.pulse.app.data.Reminder(
+                title = todo.text, dueAt = due, confidence = 1.0, confirmed = true, source = todo.source, origin = todo.origin,
+            )
+            graph.reminders.schedule(reminder.copy(id = graph.db.reminderDao().insert(reminder)))
+            dao.delete(todo)
+            ReminderPrompt.dismissTodo(graph.appContext, todo.id)
+        }
+    }
+
     fun delete(todo: Todo) {
         viewModelScope.launch {
             dao.delete(todo)
@@ -96,10 +111,18 @@ fun TodoScreen(onBack: () -> Unit) {
     val vm: TodoViewModel = viewModel(factory = viewModelFactory { initializer { TodoViewModel(graph) } })
     val todos by vm.todos.collectAsStateWithLifecycle()
     val undo = rememberUndo()
-    TodoContent(todos, onBack, vm::add, vm::toggle, vm::accept) {
-        vm.delete(it)
-        undo("To-do deleted") { vm.restore(it) }
-    }
+    TodoContent(
+        todos,
+        onBack,
+        vm::add,
+        vm::toggle,
+        vm::accept,
+        onDelete = {
+            vm.delete(it)
+            undo("To-do deleted") { vm.restore(it) }
+        },
+        onRemind = vm::remind,
+    )
 }
 
 /** Plain data in, callbacks out. No database, so tests can render it directly. */
@@ -111,6 +134,7 @@ fun TodoContent(
     onToggle: (Todo) -> Unit,
     onAccept: (Todo) -> Unit,
     onDelete: (Todo) -> Unit,
+    onRemind: (Todo) -> Unit = {},
 ) {
     val suggested = todos.filter { !it.confirmed }
     val open = todos.filter { it.confirmed && !it.done }
@@ -124,7 +148,7 @@ fun TodoContent(
         item { AddRow(onAdd, Modifier.padding(top = 6.dp).riseIn(0)) }
         if (suggested.isNotEmpty()) {
             item { SectionLabel("From your messages", Modifier.padding(top = 8.dp, bottom = 2.dp)) }
-            items(suggested, key = { it.id }) { SuggestedRow(it, onAccept, onDelete, Modifier.animateItem()) }
+            items(suggested, key = { it.id }) { SuggestedRow(it, onAccept, onDelete, onRemind, Modifier.animateItem()) }
         }
         if (open.isEmpty() && suggested.isEmpty() && done.isEmpty()) {
             item { NoteCard(null, "Nothing here yet. Type something above, or say \"add milk to my to-do\" in chat.") }
@@ -171,15 +195,17 @@ private fun AddRow(onAdd: (String) -> Unit, modifier: Modifier) {
 }
 
 @Composable
-private fun SuggestedRow(todo: Todo, onAccept: (Todo) -> Unit, onDelete: (Todo) -> Unit, modifier: Modifier) {
+private fun SuggestedRow(todo: Todo, onAccept: (Todo) -> Unit, onDelete: (Todo) -> Unit, onRemind: (Todo) -> Unit, modifier: Modifier) {
+    val from = rememberOriginLine(todo.source, todo.origin)
     val fill = MaterialTheme.colorScheme.secondaryContainer
     val ink = MaterialTheme.colorScheme.onSecondaryContainer
     Surface(shape = MaterialTheme.shapes.medium, color = fill, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 4.dp)) {
             Text(todo.text, style = MaterialTheme.typography.titleMedium, color = ink)
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Add this to your list?", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.75f))
+            if (from != null) Text(from, style = MaterialTheme.typography.labelMedium, color = ink.copy(alpha = 0.8f))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = { onDelete(todo) }) { Text("No", color = ink) }
+                TextButton(onClick = { onRemind(todo) }) { Text("Remind tomorrow", color = ink) }
                 TextButton(onClick = { onAccept(todo) }) { Text("Add", color = ink) }
             }
         }

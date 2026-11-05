@@ -211,7 +211,7 @@ class AskViewModel(private val graph: PulseGraph) : ViewModel() {
             val byRule = DeadlineExtractor.extract(null, command.text, now)?.dueAt
             // Phrases like "in 2 hours" or "at 5 pm" have no date the rules can read, so the AI works it out.
             val byAi = if (byRule == null && graph.ai.hasAi()) {
-                withinLimit<AiReading?>(null) { SmartReader.read(graph.ai.readingModels(), "Me", command.text, now) }
+                withinLimit<AiReading?>(null) { SmartReader.reminderTime(graph.ai.readingModels(), command.text, now) }
             } else {
                 null
             }

@@ -12,6 +12,7 @@ import com.pulse.app.data.MIGRATION_2_3
 import com.pulse.app.data.MIGRATION_3_4
 import com.pulse.app.data.MIGRATION_4_5
 import com.pulse.app.data.MIGRATION_5_6
+import com.pulse.app.data.MIGRATION_6_7
 import com.pulse.app.data.MoneyPrefs
 import com.pulse.app.data.PulseDatabase
 import com.pulse.app.data.SmartReader
@@ -29,7 +30,7 @@ import kotlinx.coroutines.launch
 class PulseGraph(val appContext: Context, val demo: Boolean = false) {
     val db: PulseDatabase =
         Room.databaseBuilder(appContext, PulseDatabase::class.java, if (demo) "pulse-demo.db" else "pulse.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .build()
     val aiSettings = AiSettings(appContext)
     val ai = AiRouter(aiSettings)

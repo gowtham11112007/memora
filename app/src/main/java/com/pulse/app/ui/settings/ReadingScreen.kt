@@ -104,11 +104,15 @@ private const val GPAY = "com.google.android.apps.nbu.paisa.user"
 
 private data class Sample(val title: String, val text: String)
 
-private val PAYMENT_SAMPLES = listOf(
-    Sample("Google Pay", "Paid ₹250.00 to Swiggy. UPI Ref No. 412345678901"),
-    Sample("Google Pay", "₹1,200.00 sent to Uber India. UPI Ref 509812340011"),
-    Sample("Google Pay", "Received ₹5,000.00 from Rahul Kumar"),
-)
+/** Each press gets its own reference number, so pressing again on stage isn't treated as the same payment. */
+private fun paymentSample(press: Int): Sample {
+    val ref = (100_000_000_000L..999_999_999_999L).random()
+    return listOf(
+        Sample("Google Pay", "Paid ₹250.00 to Swiggy. UPI Ref No. $ref"),
+        Sample("Google Pay", "₹1,200.00 sent to Uber India. UPI Ref $ref"),
+        Sample("Google Pay", "Received ₹5,000.00 from Rahul Kumar. UPI Ref $ref"),
+    )[press % 3]
+}
 private val OTP_SAMPLE = Sample("Google Pay", "482913 is your OTP for login. Do not share it with anyone.")
 
 class ReadingViewModel(private val graph: PulseGraph) : ViewModel() {
@@ -144,7 +148,7 @@ class ReadingViewModel(private val graph: PulseGraph) : ViewModel() {
         viewModelScope.launch { db.appPermissionDao().upsert(AppPermission(app.pkg, app.label, allowed)) }
     }
 
-    fun simulatePayment() = simulate(PAYMENT_SAMPLES[nextPayment++ % PAYMENT_SAMPLES.size])
+    fun simulatePayment() = simulate(paymentSample(nextPayment++))
 
     fun simulateOtp() = simulate(OTP_SAMPLE)
 
@@ -162,7 +166,7 @@ class ReadingViewModel(private val graph: PulseGraph) : ViewModel() {
                     CaptureDecision.DROPPED_EMPTY -> "Ignored: the notification had no text."
                     CaptureDecision.MUTED -> "Skipped: this sender is muted."
                     CaptureDecision.NOTHING_USEFUL -> "Read, but nothing in it was worth keeping."
-                    CaptureDecision.DUPLICATE -> "Already recorded in the last 2 minutes."
+                    CaptureDecision.DUPLICATE -> "Already recorded, so it wasn't counted twice."
                 },
             )
         }
@@ -384,7 +388,7 @@ private fun StatusRow(accessOn: Boolean, paused: Boolean, allowed: Int, total: I
                     color = ink,
                 )
                 Text(
-                    if (accessOn) "$allowed of $total apps allowed" else "Android needs your permission first.",
+                    if (accessOn) "$allowed of $total apps allowed" else "Android needs your permission first. If it says restricted, open App info, tap ⋮, then Allow restricted settings.",
                     style = MaterialTheme.typography.bodySmall,
                     color = ink.copy(alpha = 0.78f),
                 )

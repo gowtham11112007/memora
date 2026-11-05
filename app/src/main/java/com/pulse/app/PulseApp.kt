@@ -13,6 +13,7 @@ import com.pulse.app.data.MIGRATION_4_5
 import com.pulse.app.data.MIGRATION_5_6
 import com.pulse.app.data.MoneyPrefs
 import com.pulse.app.data.PulseDatabase
+import com.pulse.app.data.SmartReader
 import com.pulse.app.service.BudgetAlert
 import com.pulse.app.service.ReminderPrompt
 import com.pulse.app.service.ReminderScheduler
@@ -43,6 +44,8 @@ class PulseGraph(val appContext: Context, val demo: Boolean = false) {
         onRecordSaved = { BudgetAlert.check(this) },
         autoConfirmSure = aiSettings::isAutoReminders,
         onTodoSuggested = { ReminderPrompt.showTodo(appContext, it) },
+        smartReadingOn = { aiSettings.isSmartReading() && aiSettings.load().isSet },
+        smartReader = { sender, text, at -> SmartReader.read(aiSettings.load().apiKey, sender, text, at) },
     )
 }
 

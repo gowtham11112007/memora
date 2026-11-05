@@ -4,7 +4,8 @@
 2. Drop any notification containing OTP / verification code / password / CVV / PIN keywords before anything is stored.
 3. Mask long reference, card and phone numbers before storing, keeping the last 4 characters. Rows captured by the Milestone 1 build stay unmasked until the 24 h cleanup removes them.
 4. Store raw text only briefly (24 h); keep the structured record.
-5. Notification text and records are never sent over the network. The INTERNET permission exists only for optional Gemini chat and Resend email.
+5. Notification text and records are never sent over the network, unless the user turns on Smart reading. The INTERNET permission exists only for optional Gemini chat, Smart reading and Resend email.
+   - Smart reading is off by default and needs the user's own key. It sends the masked sender and message from allowed apps to Google's Gemini API, where free-tier data may be used to improve Google's products. Codes, passwords, muted people, apps not allowed and bank or payment messages are never sent. Gemini's reply can only suggest a note, a reminder or a to-do. Reminders and to-dos still ask first, and it never affects money.
    - Record questions, chat commands and built-in answers run on the phone and are sent nowhere.
    - Other questions go to Google's Gemini API over HTTPS. Free-tier data may be used to improve Google's products.
    - Monthly category totals are added only if the user turns on "Share my monthly totals". They name no merchants.

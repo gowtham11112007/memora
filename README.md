@@ -12,7 +12,7 @@
 ## Privacy
 - Only apps you turn on are read, and every app starts off.
 - OTPs, passwords, CVVs and PINs are dropped before anything is saved, and long reference numbers are masked.
-- Notifications and records never leave the phone. Only general questions you type go to Gemini.
+- Notifications and records stay on the phone. Only general questions you type go to Gemini, unless you turn on optional Smart reading, which also sends messages from allowed apps. Codes, bank alerts and muted people are never sent.
 - App lock is optional, and uses your phone's screen lock. Not built yet: database encryption. See [docs/privacy.md](docs/privacy.md).
 
 ## Set up

@@ -4,8 +4,8 @@ extracts expenses/deadlines, stores locally, answers questions from stored recor
 Target device: Nothing Phone (3a), Android 16. minSdk 26, targetSdk 35, package com.pulse.app.
 
 ## Rules
-- Local-first. Notification text and records never leave the device.
-- INTERNET is only for optional Gemini chat and Resend email. Chat sends what the user types, plus category totals only if they opt in.
+- Local-first. Notification text and records never leave the device, unless the user turns on Smart reading. Then only CaptureRepository.readSmartly may send masked text, and never codes, muted people or money messages.
+- INTERNET is only for optional Gemini chat, Smart reading and Resend email. Chat sends what the user types, plus category totals only if they opt in.
 - Record questions, chat commands and offline answers run on the phone. Keys are typed in the app, never in code or Git.
 - Detected reminders and to-dos stay unconfirmed until the user says yes on the popup. Only exception: the opt-in Automatic reminders setting, for clear dates from non-chat apps, with Undo.
 - Allowed-apps only (default none). Drop OTP/password/CVV/PIN messages before storing.

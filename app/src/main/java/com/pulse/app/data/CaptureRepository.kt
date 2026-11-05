@@ -14,8 +14,11 @@ import com.pulse.app.domain.PaymentMatch
 import com.pulse.app.domain.PrivacyFilter
 import com.pulse.app.domain.Retention
 import com.pulse.app.domain.TaskPredictor
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -41,7 +44,8 @@ fun isPersonalApp(pkg: String) = pkg in MESSAGING_PACKAGES || pkg in CHAT_PACKAG
 /**
  * The single door every notification goes through (real or simulated).
  * Order: allow-list, then privacy, then people rules, then organise. Only useful messages are kept,
- * only masked text reaches the disk, and everything here runs on the phone.
+ * and only masked text reaches the disk. Everything runs on the phone, unless the user turned on
+ * Smart reading, and then only what [readSmartly] lets through goes to Gemini.
  */
 class CaptureRepository(
     private val db: PulseDatabase,
@@ -52,15 +56,54 @@ class CaptureRepository(
     private val onRecordSaved: suspend () -> Unit = {},
     private val autoConfirmSure: () -> Boolean = { false },
     private val onTodoSuggested: (Todo) -> Unit = {},
+    private val smartReadingOn: () -> Boolean = { false },
+    private val smartReader: suspend (String, String, LocalDateTime) -> AiReading? = { _, _, _ -> null },
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     // An SMS and an app can report one payment at the same moment. One at a time means the second sees the first.
     private val oneAtATime = Mutex()
 
-    suspend fun capture(pkg: String, title: String?, text: String?, postedAt: Long): CaptureDecision =
-        oneAtATime.withLock { handle(pkg, title, text, postedAt) }
+    // Apps often repost a notification, and each read would use up free quota.
+    private val recentReadings = object : LinkedHashMap<Int, AiReading>() {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, AiReading>) = size > RECENT_READINGS
+    }
 
-    private suspend fun handle(pkg: String, title: String?, text: String?, postedAt: Long): CaptureDecision {
+    suspend fun capture(pkg: String, title: String?, text: String?, postedAt: Long): CaptureDecision {
+        // The network call happens outside the lock, so a slow reply never holds up a payment.
+        val reading = readSmartly(pkg, title, text)
+        return oneAtATime.withLock { handle(pkg, title, text, postedAt, reading) }
+    }
+
+    /**
+     * The only place message text can leave the phone. It runs the same checks as [handle] first, so
+     * apps not allowed, codes, passwords and muted people are never sent. Money stays on the phone
+     * too: bank alerts are skipped, and rules alone decide what counts as a payment.
+     */
+    private suspend fun readSmartly(pkg: String, title: String?, text: String?): AiReading? {
+        if (!smartReadingOn() || isPaused()) return null
+        if (db.appPermissionDao().isAllowed(pkg) != true) return null
+        if (CaptureGate.decide(true, title, text) != CaptureDecision.STORE) return null
+        val sender = cleanSender(title)
+        val body = text.orEmpty().trim()
+        if (body.length < MIN_SMART_READ) return null
+        if (isPersonalApp(pkg) && ContactMatcher.match(title, db.contactRuleDao().all()) { it.name }?.starred == false) return null
+        if (ExpenseExtractor.looksLikeBankAlert(body) || ExpenseExtractor.extract(sender, body, titleMayBePerson = false) != null) return null
+
+        val key = "$sender\n$body".hashCode()
+        synchronized(recentReadings) { recentReadings[key] }?.let { return it }
+        val localNow = LocalDateTime.ofInstant(Instant.ofEpochMilli(now()), zone)
+        val reading = try {
+            withContext(Dispatchers.IO) { smartReader(PrivacyFilter.mask(sender), PrivacyFilter.mask(body), localNow) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+        if (reading != null) synchronized(recentReadings) { recentReadings[key] = reading }
+        return reading
+    }
+
+    private suspend fun handle(pkg: String, title: String?, text: String?, postedAt: Long, reading: AiReading?): CaptureDecision {
         if (isPaused()) return CaptureDecision.PAUSED
         val allowed = db.appPermissionDao().isAllowed(pkg) == true
         val gate = CaptureGate.decide(allowed, title, text)
@@ -81,7 +124,7 @@ class CaptureRepository(
             }
             gate != CaptureDecision.STORE -> gate
             rule?.starred == false -> CaptureDecision.MUTED
-            else -> store(pkg, cleanSender(title), text.orEmpty().trim(), postedAt, t, rule?.starred == true)
+            else -> store(pkg, cleanSender(title), text.orEmpty().trim(), postedAt, t, rule?.starred == true, reading)
         }
         if (allowed && decision != CaptureDecision.DROPPED_EMPTY) logActivity(pkg, title, decision, t)
         return decision
@@ -94,18 +137,37 @@ class CaptureRepository(
         db.activityDao().deleteOlderThan(t - ACTIVITY_KEEP_MS)
     }
 
-    private suspend fun store(pkg: String, title: String, text: String, postedAt: Long, t: Long, starred: Boolean): CaptureDecision {
+    private suspend fun store(
+        pkg: String,
+        title: String,
+        text: String,
+        postedAt: Long,
+        t: Long,
+        starred: Boolean,
+        reading: AiReading?,
+    ): CaptureDecision {
         val personal = isPersonalApp(pkg)
         val bankAlert = !personal || ExpenseExtractor.looksLikeBankAlert(text)
         if (bankAlert) ExpenseExtractor.findBalance(text)?.let { onBalanceSeen(it, t) }
         val money = ExpenseExtractor.extract(title, text, titleMayBePerson = !personal)?.takeIf { bankAlert }
+        // Gemini's reading replaces the word rules when there is one. Without one, the rules do the same job.
+        val summary = reading?.summary
         // The user turned these apps on to be read, and a detected date or task only asks first.
-        val deadline = extractDeadline(title, text, t)
-        val todoText = if (money == null && deadline == null) TaskPredictor.suggestion(text) else null
-        // Useful messages from any allowed app go to Second Brain. Everyday chatter matches no rule and is dropped.
+        val deadline = if (reading != null) {
+            reading.remindAt?.let { Deadline((summary ?: BrainClassifier.shorten(text)).take(MAX_REMINDER_TITLE), it, AI_CONFIDENCE) }
+        } else {
+            extractDeadline(title, text, t)
+        }
+        val todoText = when {
+            money != null || deadline != null -> null
+            reading != null -> reading.todo
+            else -> TaskPredictor.suggestion(text)
+        }
+        // Useful messages from any allowed app go to Second Brain. Everyday chatter is dropped.
         val kind = when {
             money != null -> null
             starred -> NoteKind.PEOPLE.takeIf { text.length >= MIN_STARRED_NOTE }
+            reading != null -> reading.kind
             else -> BrainClassifier.classify("$title. $text")
         }
         if (money == null && deadline == null && kind == null && todoText == null) return CaptureDecision.NOTHING_USEFUL
@@ -137,7 +199,7 @@ class CaptureRepository(
                     ),
                 )
             }
-            if (kind != null) saveNote(title, text, kind, pkg, t)
+            if (kind != null) saveNote(title, summary ?: text, kind, pkg, t)
             db.rawEventDao().deleteOlderThan(t - Retention.RAW_EVENT_MS)
             todo = todoText?.let { saveSuggestedTodo(it, pkg, t) }
             deadline?.let { saveReminder(it, pkg) }
@@ -208,6 +270,12 @@ class CaptureRepository(
     }
 
     private companion object {
+        const val RECENT_READINGS = 50
+        const val MIN_SMART_READ = 8
+        const val MAX_REMINDER_TITLE = 70
+
+        // Below Deadline.CONFIDENT, so a date from Gemini always asks first, even with Automatic reminders on.
+        const val AI_CONFIDENCE = 0.7
         const val ACTIVITY_KEEP_MS = 7L * 24 * 60 * 60 * 1000
 
         // "ok" or "haha" from a starred friend isn't worth keeping.

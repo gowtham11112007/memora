@@ -74,6 +74,8 @@ fun AiScreen(onBack: () -> Unit) {
                 }
             }
         },
+        smartOn = remember { settings.isSmartReading() },
+        onSmart = settings::setSmartReading,
         onSaveEmail = { config ->
             settings.saveEmail(config)
             EmailDigest.schedule(context.applicationContext, config.weekly && config.isSet)
@@ -101,9 +103,12 @@ fun AiContent(
     onTestAi: (AiConfig) -> Unit,
     onSaveEmail: (EmailConfig) -> Unit,
     onSendEmail: (EmailConfig) -> Unit,
+    smartOn: Boolean = false,
+    onSmart: (Boolean) -> Unit = {},
 ) {
     var key by remember { mutableStateOf(initialAi.apiKey) }
     var share by remember { mutableStateOf(initialAi.shareTotals) }
+    var smart by remember { mutableStateOf(smartOn) }
     var resend by remember { mutableStateOf(initialEmail.resendKey) }
     var to by remember { mutableStateOf(initialEmail.toAddress) }
     var weekly by remember { mutableStateOf(initialEmail.weekly) }
@@ -123,8 +128,8 @@ fun AiContent(
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Gemini", style = MaterialTheme.typography.headlineMedium, color = Ink)
                 Text(
-                    "Answers general questions. Get a free key at aistudio.google.com. Only general questions you type " +
-                        "are sent. Notifications and records stay on this phone.",
+                    "Answers general questions you type. Get a free key at aistudio.google.com. Notifications and records " +
+                        "stay on this phone, unless you turn on Smart reading below.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Ink.copy(alpha = 0.78f),
                 )
@@ -151,6 +156,22 @@ fun AiContent(
         ) {
             share = it
             onSaveAi(ai.copy(shareTotals = it))
+        }
+        ToggleRow(
+            "Smart reading",
+            if (ai.isSet) {
+                "Gemini reads messages from apps you allow, to understand them better. They go to Google, and free-tier data " +
+                    "may be used to improve Google's products, so private chats may be seen. Codes, passwords, bank alerts and " +
+                    "muted people are never sent."
+            } else {
+                "Add your Gemini key first. Gemini can then read messages from apps you allow, to understand them better."
+            },
+            smart && ai.isSet,
+            enabled = ai.isSet,
+        ) {
+            smart = it
+            onSaveAi(ai)
+            onSmart(it)
         }
 
         Surface(
@@ -199,14 +220,14 @@ fun AiContent(
 }
 
 @Composable
-private fun ToggleRow(title: String, note: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+private fun ToggleRow(title: String, note: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleMedium)
                 Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Switch(checked = checked, onCheckedChange = onChange, modifier = Modifier.labelled(title))
+            Switch(checked = checked, onCheckedChange = onChange, enabled = enabled, modifier = Modifier.labelled(title))
         }
     }
 }

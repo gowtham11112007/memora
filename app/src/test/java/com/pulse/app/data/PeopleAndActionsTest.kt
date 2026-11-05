@@ -149,6 +149,111 @@ class PeopleAndActionsTest {
         assertEquals("the same message doesn't ask twice", 1, suggested.size)
     }
 
+    private val sentToGemini = mutableListOf<Pair<String, String>>()
+    private var geminiReply: AiReading? = null
+
+    private fun smartRepo(on: Boolean = true) = CaptureRepository(
+        db,
+        zone,
+        onReminderDetected = { prompted += it },
+        autoConfirmSure = { auto },
+        onTodoSuggested = { suggested += it },
+        smartReadingOn = { on },
+        smartReader = { sender, text, _ ->
+            sentToGemini += sender to text
+            geminiReply
+        },
+        now = { clock },
+    )
+
+    private val tomorrowMorning = LocalDateTime.of(2026, 11, 5, 9, 0)
+
+    @Test
+    fun `smart reading understands what the word rules miss, and still asks first`() = runBlocking {
+        auto = true
+        geminiReply = AiReading(com.pulse.app.domain.NoteKind.EVENT, "Dinner at Priya's place tomorrow", tomorrowMorning, null)
+        val message = "Priya's place nalaiku dinner, vandhudu"
+        assertEquals(CaptureDecision.STORE, smartRepo().capture("gmail", "Priya", message, clock))
+
+        assertEquals("EVENT", db.noteDao().all().single().kind)
+        assertEquals("Dinner at Priya's place tomorrow", db.noteDao().all().single().text)
+        assertEquals("Dinner at Priya's place tomorrow", prompted.single().title)
+        assertFalse("never set alone, even with Automatic reminders on", prompted.single().confirmed)
+    }
+
+    @Test
+    fun `smart reading can say a message is not useful, and can offer a to-do`() = runBlocking {
+        geminiReply = AiReading(null, null, null, null)
+        assertEquals(CaptureDecision.NOTHING_USEFUL, smartRepo().capture(WHATSAPP, "Rahul", "Your parcel joke was funny", clock))
+        assertTrue(db.noteDao().all().isEmpty())
+
+        geminiReply = AiReading(com.pulse.app.domain.NoteKind.NOTE, "Rahul needs the charger", null, "Bring Rahul's charger")
+        assertEquals(CaptureDecision.STORE, smartRepo().capture(WHATSAPP, "Rahul", "machi charger konduvaa", clock))
+        assertEquals("Bring Rahul's charger", suggested.single().text)
+        assertFalse(suggested.single().confirmed)
+    }
+
+    @Test
+    fun `only masked text is sent`() = runBlocking {
+        geminiReply = AiReading(null, null, null, null)
+        smartRepo().capture(WHATSAPP, "Rahul", "Call me on 9876543210 about the plan", clock)
+        assertEquals("Rahul" to "Call me on ••••3210 about the plan", sentToGemini.single())
+    }
+
+    @Test
+    fun `some things are never sent to Gemini`() = runBlocking {
+        mute("Muted Person")
+        val repo = smartRepo()
+        repo.capture("not.allowed", "Someone", "A secret plan for the weekend", clock)
+        repo.capture(WHATSAPP, "Rahul", "482913 is your OTP for login", clock)
+        repo.capture(WHATSAPP, "Muted Person", "Meet me at the usual place", clock)
+        repo.capture("gpay", "Google Pay", "Paid ₹250.00 to Swiggy", clock)
+        repo.capture(SMS, "AD-HDFCBK", "Your a/c XX1234 is debited for Rs.100.00", clock)
+        repo.capture(WHATSAPP, "Rahul", "ok", clock)
+        smartRepo(on = false).capture(WHATSAPP, "Rahul", "Meet me at the usual place", clock)
+        assertEquals(emptyList<Pair<String, String>>(), sentToGemini)
+        assertEquals("money still counts", 2, db.moneyRecordDao().all().size)
+    }
+
+    @Test
+    fun `when Gemini fails, the word rules take over`() = runBlocking {
+        geminiReply = null
+        assertEquals(CaptureDecision.STORE, smartRepo().capture(WHATSAPP, "Rahul", "Your parcel is arriving tomorrow", clock))
+        assertEquals("DELIVERY", db.noteDao().all().single().kind)
+        assertEquals(1, prompted.size)
+    }
+
+    @Test
+    fun `a reposted notification is only sent once`() = runBlocking {
+        geminiReply = AiReading(com.pulse.app.domain.NoteKind.NOTE, "A plan", null, null)
+        val repo = smartRepo()
+        repo.capture(WHATSAPP, "Rahul", "Same message posted again", clock)
+        repo.capture(WHATSAPP, "Rahul", "Same message posted again", clock)
+        assertEquals(1, sentToGemini.size)
+        assertEquals(1, db.noteDao().all().size)
+    }
+
+    @Test
+    fun `Gemini's reply is checked before anything uses it`() {
+        val now = LocalDateTime.of(2026, 11, 4, 14, 0)
+        val parse = { reply: String -> SmartReader.parse(reply, now) }
+        val good = parse("""```json
+            {"useful":true,"kind":"DELIVERY","summary":"Parcel arrives tomorrow","remind_at":"2026-11-05T09:00","todo":null}
+            ```""")
+        assertEquals(AiReading(com.pulse.app.domain.NoteKind.DELIVERY, "Parcel arrives tomorrow", tomorrowMorning, null), good)
+        assertEquals("not useful", AiReading(null, null, null, null), parse("""{"useful":false,"summary":"x"}"""))
+        assertEquals("not JSON", null, parse("Sorry, I can't help"))
+        assertEquals("no answer", null, parse("""{"summary":"x"}"""))
+        assertEquals("unknown kinds become notes", com.pulse.app.domain.NoteKind.NOTE, parse("""{"useful":true,"kind":"HACK"}""")?.kind)
+        assertEquals("People is only for starred contacts", com.pulse.app.domain.NoteKind.NOTE, parse("""{"useful":true,"kind":"PEOPLE"}""")?.kind)
+        assertEquals("past dates are dropped", null, parse("""{"useful":true,"remind_at":"2020-01-01T09:00"}""")?.remindAt)
+        assertEquals("far-off dates are dropped", null, parse("""{"useful":true,"remind_at":"2099-01-01T09:00"}""")?.remindAt)
+        assertEquals("bad dates are dropped", null, parse("""{"useful":true,"remind_at":"soon"}""")?.remindAt)
+        assertEquals("the word null isn't text", null, parse("""{"useful":true,"todo":"null"}""")?.todo)
+        assertEquals("codes are dropped", null, parse("""{"useful":true,"summary":"Your OTP is 482913"}""")?.summary)
+        assertEquals("long lines are cut", 120, parse("""{"useful":true,"summary":"${"a".repeat(300)}"}""")?.summary?.length)
+    }
+
     @Test
     fun `a request in a personal SMS offers a to-do too`() = runBlocking {
         assertEquals(CaptureDecision.STORE, repo.capture(SMS, "Rahul", "Please send the signed form", clock))

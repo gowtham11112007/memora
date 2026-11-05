@@ -34,6 +34,8 @@ A confirmed reminder -> an exact alarm (on time) and a WorkManager job (survives
 Unanswered suggestions -> countNeedsAnswer -> a card on Home and a list on Calendar, so a missed popup isn't lost.
 Notification buttons -> ReminderPromptReceiver -> NotificationActions (no UI, so it is tested directly).
 A useful message from any allowed app -> BrainClassifier -> short masked note. Everyday chat matches no rule and is dropped.
+Smart reading (optional) -> readSmartly, outside the capture lock -> SmartReader -> Gemini. Its checked reply replaces the
+  word rules for that message, and they take over if it fails. Money is always decided by rules on the phone.
 A chat or SMS sender -> ContactMatcher -> muted: skipped. Starred: its longer messages become People notes.
 Every result from an allowed app -> one line in `activity`, shown behind the bell. Sender only, kept 7 days.
 Sub-pages keep a small history in MainActivity, so Back returns to whichever page opened them.

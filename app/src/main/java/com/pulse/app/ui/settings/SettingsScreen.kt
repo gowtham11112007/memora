@@ -341,7 +341,7 @@ fun SettingsContent(
             title = { Text("Your privacy") },
             text = {
                 Text(
-                    "• Notifications and records stay on this phone.\n" +
+                    "• Notifications and records stay on this phone, unless you turn on Smart reading.\n" +
                         "• Only apps you turn on are read.\n" +
                         "• OTPs, passwords, CVVs and PINs are dropped before anything is saved.\n" +
                         "• Long reference numbers are masked.\n" +
@@ -349,6 +349,7 @@ fun SettingsContent(
                         "• Short lines from useful messages stay in Second Brain until you delete them. This includes useful lines from chats you allow, and longer messages from people you star.\n" +
                         "• The notifications-read list keeps sender names, never messages, for 7 days.\n" +
                         "• If you add a Gemini key, general questions you type are sent to Google. Free-tier data may be used to improve Google's products, so don't type private details.\n" +
+                        "• If you turn on Smart reading, messages from apps you allow go to Google too. Codes, passwords, bank alerts and muted people are never sent.\n" +
                         "• If you turn on email, weekly totals are sent through Resend. They name no merchants or messages.\n" +
                         "• The database is not encrypted yet. App lock guards the screens, not the stored file.",
                 )

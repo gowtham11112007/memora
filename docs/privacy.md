@@ -38,7 +38,7 @@
 - Deleted after 7 days, and by "Delete my data".
 
 ## App lock
-Off by default. When on, Memora asks for the phone's screen lock when opened, and again after more than a minute away. It also hides the app in recent apps and blocks screenshots. It guards the screens only: the stored database still isn't encrypted. It needs a screen lock on the phone, and if that lock is later removed, the app stops asking so the user isn't locked out.
+Off by default. When on, Memora asks for a fingerprint, or the phone's PIN, when opened and again after more than a minute away. Turning it on or off needs the fingerprint too. It also hides the app in recent apps and blocks screenshots. It guards the screens only: the stored database still isn't encrypted. It needs a screen lock on the phone, and if that lock is later removed, the app stops asking so the user isn't locked out.
 
 ## Automatic reminders
 Off by default. When on, a clear date from a non-chat app is set without asking, and the popup offers Undo. Chats and unclear dates still ask.

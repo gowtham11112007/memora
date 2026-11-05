@@ -54,6 +54,7 @@ import android.app.Activity
 import android.app.KeyguardManager
 import android.content.Intent
 import android.view.WindowManager
+import com.pulse.app.FingerprintUnlock
 import com.pulse.app.MainActivity
 import com.pulse.app.PulseApp
 import com.pulse.app.PulseGraph
@@ -155,10 +156,15 @@ fun SettingsScreen(
             if (on && !context.getSystemService(KeyguardManager::class.java).isDeviceSecure) {
                 scope.launch { snackbar.showSnackbar("Set a screen lock on your phone first.") }
             } else {
-                appLock = on
-                graph.aiSettings.setAppLock(on)
-                val window = (context as? Activity)?.window
-                if (on) window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                val apply = {
+                    appLock = on
+                    graph.aiSettings.setAppLock(on)
+                    val window = (context as? Activity)?.window
+                    if (on) window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    Unit
+                }
+                // A fingerprint first, so the lock is known to work and nobody else can turn it off.
+                FingerprintUnlock.ask(context, apply, apply)
             }
         },
         eveningOn = evening,
@@ -265,7 +271,7 @@ fun SettingsContent(
                     Column(Modifier.weight(1f)) {
                         Text("App lock", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "Asks for your screen lock when you open Memora. Also hides it in recent apps and blocks screenshots.",
+                            "Asks for your fingerprint or PIN when you open Memora. Also hides it in recent apps and blocks screenshots.",
                             style = MaterialTheme.typography.bodySmall,
                             color = scheme.onSurfaceVariant,
                         )

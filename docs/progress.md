@@ -18,6 +18,7 @@
 - **Full check (0.5.0):** balance keeps updating after a bank SMS, ongoing notifications are skipped, a failed read can't crash the listener, AI reads are limited to 10 a minute, senders can be corrected, tapped notifications open the right page, popups and the bell say where each item came from and what it became, and the APK is a faster non-debuggable build. Tested on the Mac only. The release build has not been opened on a phone.
 - **AI reads Second Brain:** chat answers from notes chosen for each question, with a switch. Worked live from the Mac against the real services, but not yet on a phone.
 - **Chat history:** chats are saved on the phone, with new chat, reopen, search, delete and undo, and the AI can use earlier chats. Tested on the Mac only.
+- **Fingerprint App lock:** uses Android's own prompt with the PIN as a fallback. It can only be tried on a real phone, and hasn't been yet.
 - **Sent money:** bank alerts are no longer thrown away because of a safety note or advert at the end, and more wordings are read. Tested with written samples, not the user's real SMS.
 - **Allowed apps:** redesigned, with a pinned search box and filters.
 - **Part of milestone 6:** delete all data, pause reading, CSV export and a privacy summary.

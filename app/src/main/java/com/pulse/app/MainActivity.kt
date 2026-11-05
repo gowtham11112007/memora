@@ -6,8 +6,11 @@ import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.hardware.biometrics.BiometricManager
+import android.hardware.biometrics.BiometricPrompt
 import android.os.Build
 import android.os.Bundle
+import android.os.CancellationSignal
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -65,6 +68,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.withResumed
 import com.pulse.app.service.EveningBrief
 import com.pulse.app.ui.activity.ActivityScreen
 import com.pulse.app.ui.activity.PeopleScreen
@@ -106,6 +110,41 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_OPEN = "open"
+    }
+}
+
+/**
+ * Android's own fingerprint prompt, which also offers the phone's PIN if a finger isn't read.
+ * Older Android, or anything unexpected, falls back to the screen lock page, so nobody gets locked out.
+ */
+object FingerprintUnlock {
+    fun ask(context: Context, onUnlocked: () -> Unit, onUnavailable: () -> Unit) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            onUnavailable()
+            return
+        }
+        runCatching {
+            BiometricPrompt.Builder(context)
+                .setTitle("Unlock Memora")
+                .setSubtitle("Use your fingerprint")
+                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+                .build()
+                .authenticate(
+                    CancellationSignal(),
+                    context.mainExecutor,
+                    object : BiometricPrompt.AuthenticationCallback() {
+                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) = onUnlocked()
+
+                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                            // Backing out just leaves the lock screen up. A real problem, like too many tries, uses the PIN page.
+                            val backedOut = errorCode == BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED ||
+                                errorCode == BiometricPrompt.BIOMETRIC_ERROR_CANCELED ||
+                                errorCode == BiometricPrompt.BIOMETRIC_ERROR_TIMEOUT
+                            if (!backedOut) onUnavailable()
+                        }
+                    },
+                )
+        }.onFailure { onUnavailable() }
     }
 }
 
@@ -185,15 +224,23 @@ private fun PulseRoot(openRequest: String?, onOpened: () -> Unit) {
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
-    val unlockPrompt = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == Activity.RESULT_OK) locked = false
+    // Counting from now means coming back from the PIN page doesn't lock it again straight away.
+    val unlocked = {
+        appPrefs.edit().putLong("left_at", System.currentTimeMillis()).apply()
+        locked = false
+    }
+    val screenLockPage = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) unlocked()
     }
     val askToUnlock = {
-        val prompt = keyguard.createConfirmDeviceCredentialIntent("Unlock Memora", "Use your screen lock to continue")
-        if (prompt != null) unlockPrompt.launch(prompt) else locked = false
+        FingerprintUnlock.ask(context, unlocked) {
+            val page = keyguard.createConfirmDeviceCredentialIntent("Unlock Memora", "Use your screen lock to continue")
+            if (page != null) screenLockPage.launch(page) else unlocked()
+        }
     }
     if (locked) {
-        LaunchedEffect(Unit) { askToUnlock() }
+        // The prompt needs the app fully on screen, or Android cancels it.
+        LaunchedEffect(Unit) { owner.lifecycle.withResumed { askToUnlock() } }
         LockContent(onUnlock = askToUnlock)
         return
     }
@@ -271,7 +318,7 @@ fun LockContent(onUnlock: () -> Unit) {
         Icon(Icons.Rounded.Lock, contentDescription = null, Modifier.size(48.dp), tint = Lime)
         Text("Memora is locked", Modifier.padding(top = 18.dp), style = MaterialTheme.typography.headlineMedium, color = Color.White)
         Text(
-            "Use your screen lock to open it.",
+            "Use your fingerprint to open it.",
             Modifier.padding(top = 6.dp, bottom = 26.dp),
             style = MaterialTheme.typography.bodyMedium,
             color = Color.White.copy(alpha = 0.72f),

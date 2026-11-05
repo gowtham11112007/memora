@@ -16,6 +16,7 @@
 - **Smart reading and Memora AI:** Gemini reads messages from allowed apps and answers chat in short replies, using a key built from the gitignored `secrets.properties`. On by default, with a switch. The request and reply format worked live from the Mac. It has not run on a phone.
 - **Two AI services:** Groq answers chat first and Gemini reads messages first, chosen by testing both on 11 sample messages (Groq's Qwen 9 of 11 at 0.5 s, Gemini Lite 10 of 11 at 7 s). This is a small sample, not a measure of real accuracy. Run `./gradlew testDebugUnitTest -Plive` to test the real services.
 - **Full check (0.5.0):** balance keeps updating after a bank SMS, ongoing notifications are skipped, a failed read can't crash the listener, AI reads are limited to 10 a minute, senders can be corrected, tapped notifications open the right page, popups and the bell say where each item came from and what it became, and the APK is a faster non-debuggable build. Tested on the Mac only. The release build has not been opened on a phone.
+- **AI reads Second Brain:** chat answers from notes chosen for each question, with a switch. Worked live from the Mac against the real services, but not yet on a phone.
 - **Sent money:** bank alerts are no longer thrown away because of a safety note or advert at the end, and more wordings are read. Tested with written samples, not the user's real SMS.
 - **Allowed apps:** redesigned, with a pinned search box and filters.
 - **Part of milestone 6:** delete all data, pause reading, CSV export and a privacy summary.

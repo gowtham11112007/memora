@@ -76,6 +76,8 @@ import com.pulse.app.domain.AskRecord
 import com.pulse.app.domain.AskReminder
 import com.pulse.app.domain.Category
 import com.pulse.app.data.Todo
+import com.pulse.app.domain.BrainContext
+import com.pulse.app.domain.BrainLine
 import com.pulse.app.domain.ChatCommand
 import com.pulse.app.domain.ChatCommands
 import com.pulse.app.domain.DeadlineExtractor
@@ -160,8 +162,12 @@ class AskViewModel(private val graph: PulseGraph) : ViewModel() {
                 return@launch
             }
             // "Where is my passport?" is about the user's own life, so it searches notes, not the internet.
-            Lookups.query(text)?.let { query ->
-                finish(id, runCommand(ChatCommand.Find(query)), AnswerFrom.RECORDS)
+            // If the AI may read notes, it answers in a sentence below. Otherwise the phone searches them.
+            val readsBrain = graph.ai.hasAi() && graph.aiSettings.isBrainInChat()
+            val notes = db.noteDao().all().map { BrainLine(it.text, it.kind, it.createdAt, it.pinned) }
+            val lookup = Lookups.query(text)
+            if (lookup != null && (!readsBrain || notes.isEmpty())) {
+                finish(id, runCommand(ChatCommand.Find(lookup)), AnswerFrom.RECORDS)
                 return@launch
             }
             // 3. Built-in answers: maths, dates, units, greetings, help.
@@ -180,12 +186,21 @@ class AskViewModel(private val graph: PulseGraph) : ViewModel() {
                 return@launch
             }
             val totals = if (config.shareTotals) AskEngine.monthTotalsLine(records, rules, today, zone) else null
-            val system = if (totals != null) "$SYSTEM_PROMPT $totals" else SYSTEM_PROMPT
+            val brain = if (readsBrain) BrainContext.section(BrainContext.pick(notes, text), zone) else ""
+            val system = listOfNotNull(SYSTEM_PROMPT, "Today is ${today.dayOfWeek}, $today.", totals).joinToString(" ") + brain
             val messages = buildMessages(text)
             val tooSlow: LlmResult = LlmResult.Failed("That's taking too long. Check your internet and try again.")
             when (val result = withinLimit(tooSlow) { graph.ai.answer(graph.ai.chatModels(), system, messages) }) {
                 is LlmResult.Reply -> finish(id, AskAnswer(result.text.replace("**", "")), AnswerFrom.AI)
-                is LlmResult.Failed -> finish(id, AskAnswer(result.reason), AnswerFrom.NOTICE)
+                is LlmResult.Failed -> {
+                    // No AI right now, but the phone can still search the notes.
+                    val found = if (readsBrain) BrainContext.matching(notes, text) else emptyList()
+                    if (found.isNotEmpty()) {
+                        finish(id, AskAnswer("I can't reach the AI right now, but this is in your Second Brain.", notes = found.take(5).map { it.text }), AnswerFrom.RECORDS)
+                    } else {
+                        finish(id, AskAnswer(result.reason), AnswerFrom.NOTICE)
+                    }
+                }
             }
         }
     }
@@ -257,7 +272,7 @@ class AskViewModel(private val graph: PulseGraph) : ViewModel() {
         }
     }
 
-    /** Only what the user typed and earlier Gemini replies. Never notification text or record details. */
+    /** Only what the user typed and earlier AI replies. Notes go separately, chosen by BrainContext. */
     private fun buildMessages(question: String): List<LlmMessage> {
         val history = turns.value.filter { it.from == AnswerFrom.AI && it.answer != null }.takeLast(HISTORY_TURNS)
         return buildList {
@@ -354,7 +369,7 @@ private fun Suggestions(onAsk: (String) -> Unit, modifier: Modifier) {
     val scheme = MaterialTheme.colorScheme
     val tiles = listOf(
         "How much did I spend this week?" to scheme.surface,
-        "Biggest expense this month?" to scheme.surface,
+        "What's in my Second Brain?" to scheme.surface,
         "What is due soon?" to scheme.surface,
         "Remember that my Wi-Fi router is in the hall" to scheme.secondaryContainer,
     )

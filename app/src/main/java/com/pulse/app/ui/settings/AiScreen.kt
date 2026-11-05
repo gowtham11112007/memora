@@ -77,6 +77,8 @@ fun AiScreen(onBack: () -> Unit) {
         },
         smartOn = remember { settings.isSmartReading() },
         onSmart = settings::setSmartReading,
+        brainOn = remember { settings.isBrainInChat() },
+        onBrain = settings::setBrainInChat,
         onSaveEmail = { config ->
             settings.saveEmail(config)
             EmailDigest.schedule(context.applicationContext, config.weekly && config.isSet)
@@ -107,7 +109,10 @@ fun AiContent(
     smartOn: Boolean = false,
     onSmart: (Boolean) -> Unit = {},
     builtInKey: Boolean = false,
+    brainOn: Boolean = true,
+    onBrain: (Boolean) -> Unit = {},
 ) {
+    var brain by remember { mutableStateOf(brainOn) }
     var showKey by remember { mutableStateOf(!builtInKey || initialAi.isSet) }
     var key by remember { mutableStateOf(initialAi.apiKey) }
     var share by remember { mutableStateOf(initialAi.shareTotals) }
@@ -159,6 +164,15 @@ fun AiContent(
             smart = it
             onSaveAi(ai)
             onSmart(it)
+        }
+        ToggleRow(
+            "Use Second Brain in chat",
+            "Lets Memora AI answer from your notes. Notes that help with your question are sent with it to the cloud AI " +
+                "services. Notes with codes or passwords stay on this phone.",
+            brain,
+        ) {
+            brain = it
+            onBrain(it)
         }
         if (showKey) {
             OutlinedTextField(

@@ -62,6 +62,10 @@ class AiSettings(context: Context) {
 
     fun setSmartReading(on: Boolean) = prefs.edit().putBoolean("smart_reading", on).apply()
 
+    fun isBrainInChat(): Boolean = prefs.getBoolean("brain_in_chat", true)
+
+    fun setBrainInChat(on: Boolean) = prefs.edit().putBoolean("brain_in_chat", on).apply()
+
     fun isAppLock(): Boolean = prefs.getBoolean("app_lock", false)
 
     fun setAppLock(on: Boolean) = prefs.edit().putBoolean("app_lock", on).apply()

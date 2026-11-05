@@ -16,8 +16,8 @@ android {
         applicationId = "com.pulse.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.5.0"
+        versionCode = 6
+        versionName = "0.6.0"
         // The key lives in secrets.properties, which Git ignores, so it's in the APK but never in the repo.
         val secrets = Properties()
         rootProject.file("secrets.properties").takeIf { it.exists() }?.inputStream()?.use { secrets.load(it) }

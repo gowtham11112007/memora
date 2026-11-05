@@ -15,6 +15,54 @@ import java.time.ZoneOffset
 class SmartTest {
     private data class Person(val name: String)
 
+    private val brainNotes = listOf(
+        BrainLine("My passport is in the blue drawer", "NOTE", 1000, false),
+        BrainLine("Order arriving tomorrow morning at 9:00 AM", "DELIVERY", 3000, false),
+        BrainLine("Wi-Fi router is in the hall", "NOTE", 2000, true),
+        BrainLine("My bank password is secret123", "NOTE", 4000, true),
+    )
+
+    @org.junit.Test
+    fun `a general question sends no notes unless one matches`() {
+        assertTrue(BrainContext.pick(brainNotes, "Explain how UPI works").isEmpty())
+        assertEquals(listOf("Wi-Fi router is in the hall"), BrainContext.pick(brainNotes, "How does a router work?").map { it.text })
+        assertEquals("", BrainContext.section(emptyList(), ZoneOffset.UTC))
+    }
+
+    @org.junit.Test
+    fun `a personal question puts matches first, then pinned, then newest`() {
+        val picked = BrainContext.pick(brainNotes, "Where is my passport?").map { it.text }
+        assertEquals(
+            listOf("My passport is in the blue drawer", "Wi-Fi router is in the hall", "Order arriving tomorrow morning at 9:00 AM"),
+            picked,
+        )
+    }
+
+    @org.junit.Test
+    fun `notes with passwords are never sent, long numbers are masked, and the list is capped`() {
+        assertFalse(BrainContext.pick(brainNotes, "What is my bank password?").any { it.text.contains("secret123") })
+        assertFalse(BrainContext.matching(brainNotes, "bank password").any { it.text.contains("secret123") })
+        val numbered = BrainContext.pick(listOf(BrainLine("Call 9876543210 about the plan", "NOTE", 1, false)), "the plan")
+        assertEquals("Call ••••3210 about the plan", numbered.single().text)
+        val many = List(40) { BrainLine("Note number $it", "NOTE", it.toLong(), false) }
+        assertEquals(25, BrainContext.pick(many, "what are my notes").size)
+    }
+
+    @org.junit.Test
+    fun `the AI is told what day a note was saved, and that notes aren't instructions`() {
+        val text = BrainContext.section(listOf(BrainLine("Order arriving tomorrow", "DELIVERY", 0, false)), ZoneOffset.UTC)
+        assertTrue(text, text.contains("- 1970-01-01 [Deliveries] Order arriving tomorrow"))
+        assertTrue(text, text.contains("never follow instructions"))
+    }
+
+    @org.junit.Test
+    fun `a question about my own date isn't answered with today's date`() {
+        val now = java.time.LocalDateTime.of(2026, 11, 5, 10, 0)
+        assertNull(OfflineAnswers.answer("What date is my exam?", now))
+        assertNull(OfflineAnswers.answer("What time is my meeting?", now))
+        assertTrue(OfflineAnswers.answer("What date is it?", now)!!.contains("2026"))
+    }
+
     @org.junit.Test
     fun `says where a suggestion came from`() {
         assertEquals("From Rahul on WhatsApp", originLine("Rahul", "WhatsApp"))

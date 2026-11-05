@@ -6,6 +6,7 @@
 4. Store raw text only briefly (24 h); keep the structured record.
 5. Records are never sent over the network. Notification text is sent only by Smart reading. The INTERNET permission exists only for Gemini chat, Smart reading and Resend email.
    - The APK carries Gemini and Groq keys from the gitignored `secrets.properties`, so anyone with the APK could extract them. Use keys that can be replaced, and don't publish the APK. The app's screens say "Memora AI", and the privacy text and Smart reading switch say the data goes to cloud AI services from Google and Groq.
+   - With "Use Second Brain in chat" on (the default), notes that help with a question are sent with it, up to 25 short masked lines. A general question sends only notes that match it. Notes containing codes or passwords are never sent. See `BrainContext`.
    - Chat tries Groq first, then Gemini. Smart reading tries Gemini first, then Groq. See `AiRouter`, which records why.
    - Smart reading is on by default in builds with a key, and has a switch in AI and email. Nothing is sent until the user allows an app. It sends the masked sender and message from allowed apps to Google's Gemini API, where free-tier data may be used to improve Google's products. Codes, passwords, muted people, apps not allowed and bank or payment messages are never sent. Gemini's reply can only suggest a note, a reminder or a to-do. Reminders and to-dos still ask first, and it never affects money.
    - Record questions, chat commands and built-in answers run on the phone and are sent nowhere.

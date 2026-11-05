@@ -37,8 +37,9 @@ A useful message from any allowed app -> BrainClassifier -> short masked note. E
 Smart reading -> readSmartly, outside the capture lock -> SmartReader -> Gemini, then Groq. Its checked reply adds to the
   word rules and never removes what they found. Money is always decided by rules on the phone.
 Chat -> AiRouter -> Groq (about 0.5 s), then Gemini, with a 25 s limit so it can't load forever.
+  BrainContext adds the notes that help with the question. If the AI can't be reached, the phone searches the notes itself.
 A chat or SMS sender -> ContactMatcher -> muted: skipped. Starred: its longer messages become People notes.
-Every result from an allowed app -> one line in `activity`, shown behind the bell. Sender only, kept 7 days.
+Every result from an allowed app -> one line in `activity`, shown behind the bell. Sender, outcome and what was saved, kept 7 days.
 Sub-pages keep a small history in MainActivity, so Back returns to whichever page opened them.
 ```
 

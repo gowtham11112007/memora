@@ -21,11 +21,12 @@ object BrainClassifier {
     private val ic = setOf(RegexOption.IGNORE_CASE)
     private val promotion = Regex("""\b(offers?|sale|deals?|discount|cashback|win|coupon|voucher|shop now|limited time)\b|%\s*off""", ic)
     private val rules = listOf(
-        NoteKind.TICKET to Regex("""\b(pnr|boarding pass|booking confirmed|booking id|e-?ticket|flight|seat no)\b""", ic),
-        NoteKind.DELIVERY to Regex("""\b(shipped|out for delivery|delivered|arriving|tracking id|awb|courier|dispatched)\b""", ic),
-        NoteKind.BILL to Regex("""\b(bill|emi|premium|recharge|subscription|renewal|renew|due)\b""", ic),
-        NoteKind.EVENT to Regex("""\b(appointment|meeting|interview|exam|class at|webinar|deadline)\b""", ic),
+        NoteKind.TICKET to Regex("""\b(pnr|boarding pass|booking confirmed|booking id|e-?ticket|tickets?|flight|seat no)\b""", ic),
+        NoteKind.DELIVERY to Regex("""\b(shipped|delivery|deliver|delivering|delivered|arriving|arrives|parcel|tracking id|awb|courier|dispatched)\b""", ic),
+        NoteKind.BILL to Regex("""\b(bill|emi|premium|recharge|subscription|renewal|renew|due|rent|fees?|invoice)\b""", ic),
+        NoteKind.EVENT to Regex("""\b(appointment|meeting|let'?s meet|interview|exam|class at|class test|webinar|deadline|assignment|submission|viva|quiz|lab record|seminar|workshop|presentation|party|wedding)\b""", ic),
     )
+    private val sentenceEnd = Regex("""\.\s|(?<=am|pm)\.(?=[A-Za-z])""", ic)
 
     // Business SMS senders look like "AD-HDFCBK". Saved contacts and people don't.
     private val businessSender = Regex("""^[A-Z0-9]{2}-[A-Z0-9-]+$|^[A-Z0-9]{5,}$""")
@@ -39,7 +40,7 @@ object BrainClassifier {
 
     /** The first sentence, short enough to keep. The full message is never stored long-term. */
     fun shorten(text: String): String {
-        val sentence = text.trim().substringBefore(". ").trim()
+        val sentence = text.trim().split(sentenceEnd, limit = 2).first().trim()
         return if (sentence.length <= 120) sentence else sentence.take(117).trimEnd() + "..."
     }
 }

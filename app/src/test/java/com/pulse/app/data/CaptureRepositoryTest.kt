@@ -79,16 +79,16 @@ class CaptureRepositoryTest {
     }
 
     @Test
-    fun `bank SMS is read but a personal chat from the same app is not`() = runBlocking {
+    fun `bank SMS counts as money but a personal chat from the same app does not`() = runBlocking {
         val bank = repo.capture(SMS, "AD-IOBCHN", "Your a/c no. XXXX4131 is debited for Rs.1.00 on 04-11-26", clock)
         assertEquals(CaptureDecision.STORE, bank)
         assertEquals(100L, records().single().amountPaise)
 
-        val chat = repo.capture(SMS, "Kiran", "I paid 500 rupees for lunch, meeting tomorrow", clock)
-        assertEquals(CaptureDecision.NOTHING_USEFUL, chat)
+        repo.capture(SMS, "Kiran", "I paid 500 rupees for lunch, meeting tomorrow", clock)
         assertEquals(1, records().size)
-        assertEquals(1, raw().size)
-        assertTrue(reminders().isEmpty())
+        assertFalse("a date from a chat only asks first", reminders().single().confirmed)
+
+        assertEquals(CaptureDecision.NOTHING_USEFUL, repo.capture(SMS, "Kiran", "Good morning, how are you", clock))
     }
 
     @Test
@@ -175,11 +175,12 @@ class CaptureRepositoryTest {
     }
 
     @Test
-    fun `SMS notes need a business sender, so chats are never kept`() = runBlocking {
-        assertEquals(CaptureDecision.NOTHING_USEFUL, repo.capture(SMS, "Kiran", "My order has shipped", clock))
-        assertTrue(db.noteDao().all().isEmpty())
-        assertEquals(CaptureDecision.STORE, repo.capture(SMS, "AD-AMAZON", "Your order has shipped", clock))
-        assertEquals(1, db.noteDao().all().size)
+    fun `useful SMS become notes from anyone, and adverts never do`() = runBlocking {
+        assertEquals(CaptureDecision.STORE, repo.capture(SMS, "Kiran", "My order has shipped", clock))
+        assertEquals(CaptureDecision.STORE, repo.capture(SMS, "AD-AMAZON", "Your parcel is arriving", clock))
+        assertEquals(2, db.noteDao().all().size)
+        assertEquals(CaptureDecision.NOTHING_USEFUL, repo.capture(SMS, "AD-SHOP", "Sale on all delivery items, 50% off", clock))
+        assertEquals(2, db.noteDao().all().size)
     }
 
     @Test

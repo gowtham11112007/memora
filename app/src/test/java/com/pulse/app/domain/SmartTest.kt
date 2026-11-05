@@ -16,6 +16,21 @@ class SmartTest {
     private data class Person(val name: String)
 
     @org.junit.Test
+    fun `dates survive typing mistakes, and times read in every style`() {
+        val now = java.time.LocalDateTime.of(2026, 11, 4, 14, 0)
+        val due = { text: String -> DeadlineExtractor.extract(null, text, now)?.dueAt }
+        val tomorrow = { hour: Int, minute: Int -> java.time.LocalDateTime.of(2026, 11, 5, hour, minute) }
+        org.junit.Assert.assertEquals(tomorrow(9, 0), due("delivery tommorow morning"))
+        org.junit.Assert.assertEquals(tomorrow(9, 30), due("exam tmrw at 9.30 am"))
+        org.junit.Assert.assertEquals(tomorrow(17, 0), due("meeting tomorow 5pm"))
+        org.junit.Assert.assertEquals(tomorrow(18, 0), due("parcel arriving tommorrow evening"))
+        org.junit.Assert.assertEquals(tomorrow(14, 0), due("assignment due tmr afternoon"))
+        org.junit.Assert.assertEquals(tomorrow(19, 15), due("meeting tomorrow 7:15 p.m."))
+        org.junit.Assert.assertEquals(java.time.LocalDateTime.of(2026, 11, 6, 9, 0), due("exam day after tommorow"))
+        org.junit.Assert.assertEquals(java.time.LocalDateTime.of(2026, 11, 4, 20, 0), due("delivery tonight"))
+    }
+
+    @org.junit.Test
     fun `the money form changes only what you edited`() {
         val form = { balance: Long?, budget: Long, balanceText: String, budgetText: String ->
             com.pulse.app.ui.home.moneyChange(balance, budget, balanceText, budgetText)

@@ -150,9 +150,35 @@ class PeopleAndActionsTest {
     }
 
     @Test
-    fun `a request in an SMS from a stranger offers nothing`() = runBlocking {
-        assertEquals(CaptureDecision.NOTHING_USEFUL, repo.capture(SMS, "Rahul", "Please send the signed form", clock))
-        assertTrue(suggested.isEmpty())
+    fun `a request in a personal SMS offers a to-do too`() = runBlocking {
+        assertEquals(CaptureDecision.STORE, repo.capture(SMS, "Rahul", "Please send the signed form", clock))
+        assertEquals(1, suggested.size)
+    }
+
+    @Test
+    fun `the real delivery message with typos is understood`() = runBlocking {
+        val message = "Heyy gowtham  your delivery is arriving Tommorow morning 9.00am.your order is out of delivery"
+        assertEquals(CaptureDecision.STORE, repo.capture(WHATSAPP, "Rahul (2 messages)", message, clock))
+
+        val note = db.noteDao().all().single()
+        assertEquals("DELIVERY", note.kind)
+        assertEquals("Heyy gowtham  your delivery is arriving Tommorow morning 9.00am", note.text)
+
+        val reminder = prompted.single()
+        assertFalse("a chat always asks first", reminder.confirmed)
+        assertEquals(LocalDateTime.of(2026, 11, 5, 9, 0).toInstant(zone).toEpochMilli(), reminder.dueAt)
+        assertEquals("Heyy gowtham  your delivery is arriving Tommorow morning 9.00am", reminder.title)
+        assertEquals("Rahul", log().single().title)
+        assertTrue("a delivery isn't money", db.moneyRecordDao().all().isEmpty())
+    }
+
+    @Test
+    fun `chats with useful words reach Second Brain, chatter and adverts don't`() = runBlocking {
+        repo.capture(WHATSAPP, "Rahul", "My parcel from Amazon has come", clock)
+        repo.capture(WHATSAPP, "Rahul", "Viva is next week", clock)
+        repo.capture(WHATSAPP, "Rahul", "Good morning machi, what's up", clock)
+        repo.capture(WHATSAPP, "Shop", "Big sale on delivery today, 50% off", clock)
+        assertEquals(listOf("DELIVERY", "EVENT"), db.noteDao().all().map { it.kind }.sorted())
     }
 
     @Test

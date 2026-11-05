@@ -323,7 +323,7 @@ fun ReadingContent(
                 NoteCard(
                     null,
                     "Payment apps usually notify you only when you receive money. To catch money you send, turn on your " +
-                        "SMS app, so Memora can read the bank's message. Personal SMS are never saved.",
+                        "SMS app, so Memora can read the bank's message. Only bank alerts count as money.",
                 )
             }
             items(state.sources, key = { "s-" + it.app.pkg }) { AppToggleRow(it, onToggle) }
@@ -332,8 +332,8 @@ fun ReadingContent(
                 item {
                     NoteCard(
                         null,
-                        "Memora offers a reminder or to-do when a message asks for one, and asks you first. " +
-                            "Chats aren't saved, unless you star that person. You can star or mute people from the bell on Home.",
+                        "Memora offers a reminder or to-do when a message needs one, and asks you first. Useful messages, " +
+                            "like deliveries and exams, are saved as short notes. Everyday chat isn't. Mute anyone from the bell on Home.",
                     )
                 }
                 items(state.chats, key = { "c-" + it.app.pkg }) { AppToggleRow(it, onToggle) }
@@ -415,7 +415,7 @@ private fun AppToggleRow(row: AppRow, onToggle: (AppItem, Boolean) -> Unit) {
                 Text(
                     when {
                         isSms -> "Bank SMS for money you send. $seen"
-                        row.app.pkg in CHAT_PACKAGES -> "Reminders and to-dos. $seen"
+                        row.app.pkg in CHAT_PACKAGES -> "Reminders, notes and to-dos. $seen"
                         else -> seen
                     },
                     style = MaterialTheme.typography.bodySmall,

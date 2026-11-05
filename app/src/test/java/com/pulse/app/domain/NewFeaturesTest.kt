@@ -54,11 +54,15 @@ class DeadlineExtractorTest {
         listOf(
             "Offer expires tomorrow, shop now!",
             "Sale ends. Last date 12 Nov for 50% off",
-            "Your order will arrive on 15 Nov",
             "See you tomorrow",
             "Bill was due on 12/01/2020",
             "Bill is due on 31/02/2027",
         ).forEach { assertNull("should be ignored: $it", due(it)) }
+    }
+
+    @Test
+    fun `a delivery date offers a reminder`() {
+        assertEquals(15, due("Your order will arrive on 15 Nov")?.dueAt?.dayOfMonth)
     }
 
     @Test

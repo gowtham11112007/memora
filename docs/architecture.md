@@ -33,7 +33,7 @@ A confirmed reminder -> an exact alarm (on time) and a WorkManager job (survives
   ReminderDelivery and cancels the other -> notification: Done, In 10 min, Tomorrow. Repeating ones move to their next date.
 Unanswered suggestions -> countNeedsAnswer -> a card on Home and a list on Calendar, so a missed popup isn't lost.
 Notification buttons -> ReminderPromptReceiver -> NotificationActions (no UI, so it is tested directly).
-A useful message -> BrainClassifier -> short masked note. Personal SMS and chats are excluded by a business-sender check.
+A useful message from any allowed app -> BrainClassifier -> short masked note. Everyday chat matches no rule and is dropped.
 A chat or SMS sender -> ContactMatcher -> muted: skipped. Starred: its longer messages become People notes.
 Every result from an allowed app -> one line in `activity`, shown behind the bell. Sender only, kept 7 days.
 Sub-pages keep a small history in MainActivity, so Back returns to whichever page opened them.

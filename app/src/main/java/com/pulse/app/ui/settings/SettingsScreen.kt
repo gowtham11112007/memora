@@ -346,7 +346,7 @@ fun SettingsContent(
                         "• OTPs, passwords, CVVs and PINs are dropped before anything is saved.\n" +
                         "• Long reference numbers are masked.\n" +
                         "• Message text is deleted after 24 hours.\n" +
-                        "• Short lines from useful messages stay in Second Brain until you delete them. Chats are saved only from people you star.\n" +
+                        "• Short lines from useful messages stay in Second Brain until you delete them. This includes useful lines from chats you allow, and longer messages from people you star.\n" +
                         "• The notifications-read list keeps sender names, never messages, for 7 days.\n" +
                         "• If you add a Gemini key, general questions you type are sent to Google. Free-tier data may be used to improve Google's products, so don't type private details.\n" +
                         "• If you turn on email, weekly totals are sent through Resend. They name no merchants or messages.\n" +

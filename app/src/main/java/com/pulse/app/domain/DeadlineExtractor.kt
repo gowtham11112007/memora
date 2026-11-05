@@ -19,7 +19,7 @@ object DeadlineExtractor {
     private const val WEEKDAYS = "monday|tuesday|wednesday|thursday|friday|saturday|sunday"
 
     private val trigger = Regex(
-        """\b(due|deadline|last date|expires?|expiry|expiring|renew|renewal|pay by|submit|submission|assignment|viva|quiz|class test|lab record|seminar|workshop|presentation|appointment|meeting|let'?s meet|exam|interview|remind me|reminder|will be debited)\b""",
+        """\b(due|deadline|last date|expires?|expiry|expiring|renew|renewal|pay by|submit|submission|assignment|viva|quiz|class test|lab record|seminar|workshop|presentation|appointment|meeting|let'?s meet|exam|interview|remind me|reminder|will be debited|delivery|deliver|delivering|delivered|arriving|arrives|arrive|parcel|courier|shipped)\b""",
         ic,
     )
     private val promotion = Regex("""\b(offers?|sale|deals?|discount|cashback|win|coupon|voucher|shop now|limited time)\b|%\s*off""", ic)
@@ -31,8 +31,21 @@ object DeadlineExtractor {
     private val inDays = Regex("""\bin\s+(\d{1,3})\s+days?\b""", ic)
     private val nextWeekday = Regex("""\bnext\s+($WEEKDAYS)\b""", ic)
     private val onWeekday = Regex("""\b(?:on|by|this|before)\s+($WEEKDAYS)\b""", ic)
-    private val time12 = Regex("""\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b""", ic)
+    private val time12 = Regex("""\b(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm|a\.m|p\.m)\b""", ic)
     private val time24 = Regex("""\b([01]?\d|2[0-3]):([0-5]\d)\b""")
+
+    // People type quickly, so common spellings count too.
+    private const val TOMORROW = "tomorrow|tomorow|tommorow|tommorrow|tomorrw|tommorw|tmrw|tmr|tmrrw|2moro|2morrow|tomo"
+    private val dayAfterTomorrow = Regex("""\bday after ($TOMORROW)\b""", ic)
+    private val tomorrow = Regex("""\b($TOMORROW)\b""", ic)
+    private val today = Regex("""\b(today|tonight|tdy|2day|2nite)\b""", ic)
+    private val partOfDay = listOf(
+        Regex("""\bmorning\b""", ic) to LocalTime.of(9, 0),
+        Regex("""\bafternoon\b""", ic) to LocalTime.of(14, 0),
+        Regex("""\bevening\b""", ic) to LocalTime.of(18, 0),
+        Regex("""\b(tonight|night|2nite)\b""", ic) to LocalTime.of(20, 0),
+    )
+    private val sentenceEnd = Regex("""\.\s|(?<=am|pm)\.(?=[A-Za-z])""", ic)
 
     private val defaultTime = LocalTime.of(9, 0)
 
@@ -53,7 +66,7 @@ object DeadlineExtractor {
     }
 
     private fun titleFrom(text: String): String {
-        val sentence = text.trim().substringBefore(". ").trim()
+        val sentence = text.trim().split(sentenceEnd, limit = 2).first().trim()
         return if (sentence.length <= 70) sentence else sentence.take(67).trimEnd() + "..."
     }
 
@@ -72,9 +85,9 @@ object DeadlineExtractor {
             val (mo, d, y) = m.destructured
             return absolute(d.toInt(), mo, y, today)
         }
-        if ("day after tomorrow" in lower) return today.plusDays(2) to 0.85
-        if (Regex("""\btomorrow\b""").containsMatchIn(lower)) return today.plusDays(1) to 0.85
-        if (Regex("""\b(today|tonight)\b""").containsMatchIn(lower)) return today to 0.85
+        if (dayAfterTomorrow.containsMatchIn(lower)) return today.plusDays(2) to 0.85
+        if (tomorrow.containsMatchIn(lower)) return today.plusDays(1) to 0.85
+        if (this.today.containsMatchIn(lower)) return today to 0.85
         inDays.find(message)?.let { return today.plusDays(it.groupValues[1].toLong()) to 0.85 }
         nextWeekday.find(message)?.let { m ->
             return today.with(TemporalAdjusters.next(weekday(m.groupValues[1]))) to 0.7
@@ -103,9 +116,10 @@ object DeadlineExtractor {
             val hour = m.groupValues[1].toInt()
             if (hour !in 1..12) return null
             val minute = m.groupValues[2].toIntOrNull() ?: 0
-            val isPm = m.groupValues[3].equals("pm", ignoreCase = true)
+            val isPm = m.groupValues[3].startsWith("p", ignoreCase = true)
             return LocalTime.of(hour % 12 + if (isPm) 12 else 0, minute)
         }
-        return time24.find(message)?.let { LocalTime.of(it.groupValues[1].toInt(), it.groupValues[2].toInt()) }
+        time24.find(message)?.let { return LocalTime.of(it.groupValues[1].toInt(), it.groupValues[2].toInt()) }
+        return partOfDay.firstOrNull { (pattern, _) -> pattern.containsMatchIn(message) }?.second
     }
 }

@@ -15,13 +15,13 @@
 
 ## Only useful messages are kept
 - A message with no money and no date is read in memory and discarded. Only the time an allowed app last posted is recorded.
-- SMS apps also carry personal chats, so they get a stricter check: bank-style words for money, and bill-style words for reminders.
-- A personal chat that happens to use those words could still be kept. The check is a rule, not a guarantee.
+- SMS and chat apps need bank-style words before anything counts as money.
+- Sorting uses word rules, so a personal message that happens to use useful words could still be kept.
 
 ## Chat apps and people
 - WhatsApp, Telegram and Instagram are read only if the user turns them on, like any other app.
 - Chats never create money records, because a friend's "I paid 500" isn't the user's expense. A real bank alert still counts.
-- A chat with a date or a request makes an unconfirmed reminder or to-do, stored until the user answers the popup. The message's masked text also stays in `raw_event` for up to 24 h. Other chats are read in memory and discarded.
+- A chat or personal SMS with a date or a request makes an unconfirmed reminder or to-do, stored until the user answers the popup. One with useful words, like a delivery or an exam, is also kept as a short masked note in Second Brain, at the user's request. The message's masked text stays in `raw_event` for up to 24 h. Other chats are read in memory and discarded.
 - Star: messages of 12 characters or more from that person are kept as short lines in Second Brain until deleted. This is the user's choice, per person. Codes and passwords are still dropped first.
 - Mute: Memora skips that person's messages after the privacy check. Only the bell page's line remains.
 - Matching uses the name in the notification title, so it can miss a renamed contact or match a group with that name in it.

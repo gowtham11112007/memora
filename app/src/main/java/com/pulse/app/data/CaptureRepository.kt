@@ -81,7 +81,7 @@ class CaptureRepository(
             }
             gate != CaptureDecision.STORE -> gate
             rule?.starred == false -> CaptureDecision.MUTED
-            else -> store(pkg, title.orEmpty().trim(), text.orEmpty().trim(), postedAt, t, rule?.starred == true)
+            else -> store(pkg, cleanSender(title), text.orEmpty().trim(), postedAt, t, rule?.starred == true)
         }
         if (allowed && decision != CaptureDecision.DROPPED_EMPTY) logActivity(pkg, title, decision, t)
         return decision
@@ -89,25 +89,24 @@ class CaptureRepository(
 
     /** The bell page's history. It names the sender only, never the message, and lasts 7 days. */
     private suspend fun logActivity(pkg: String, title: String?, decision: CaptureDecision, t: Long) {
-        val shown = if (decision == CaptureDecision.DROPPED_SENSITIVE) "" else PrivacyFilter.mask(title.orEmpty().trim())
+        val shown = if (decision == CaptureDecision.DROPPED_SENSITIVE) "" else PrivacyFilter.mask(cleanSender(title))
         db.activityDao().insert(ActivityEntry(packageName = pkg, title = shown, outcome = decision.name, at = t))
         db.activityDao().deleteOlderThan(t - ACTIVITY_KEEP_MS)
     }
 
     private suspend fun store(pkg: String, title: String, text: String, postedAt: Long, t: Long, starred: Boolean): CaptureDecision {
-        val sms = pkg in MESSAGING_PACKAGES
         val personal = isPersonalApp(pkg)
         val bankAlert = !personal || ExpenseExtractor.looksLikeBankAlert(text)
         if (bankAlert) ExpenseExtractor.findBalance(text)?.let { onBalanceSeen(it, t) }
         val money = ExpenseExtractor.extract(title, text, titleMayBePerson = !personal)?.takeIf { bankAlert }
-        // Chat apps were turned on for this, and a detected date only asks first. SMS stays strict.
-        val deadline = extractDeadline(title, text, t)?.takeIf { !sms || starred || DeadlineExtractor.looksLikeBill(text) }
-        val todoText = if (money == null && deadline == null && (!sms || starred)) TaskPredictor.suggestion(text) else null
-        // A personal chat becomes a note only from a starred person, so SMS needs a business-style sender.
+        // The user turned these apps on to be read, and a detected date or task only asks first.
+        val deadline = extractDeadline(title, text, t)
+        val todoText = if (money == null && deadline == null) TaskPredictor.suggestion(text) else null
+        // Useful messages from any allowed app go to Second Brain. Everyday chatter matches no rule and is dropped.
         val kind = when {
             money != null -> null
             starred -> NoteKind.PEOPLE.takeIf { text.length >= MIN_STARRED_NOTE }
-            else -> BrainClassifier.classify("$title. $text")?.takeIf { !personal || BrainClassifier.looksLikeBusiness(title) }
+            else -> BrainClassifier.classify("$title. $text")
         }
         if (money == null && deadline == null && kind == null && todoText == null) return CaptureDecision.NOTHING_USEFUL
 
@@ -148,6 +147,9 @@ class CaptureRepository(
         if (money != null) onRecordSaved()
         return CaptureDecision.STORE
     }
+
+    /** WhatsApp adds a count to the sender's name, such as "Rahul (2 messages)". */
+    private fun cleanSender(title: String?) = title.orEmpty().trim().replace(Regex("""\s*\(\d+ messages?\)$"""), "")
 
     private suspend fun saveSuggestedTodo(text: String, pkg: String, t: Long): Todo? {
         val line = PrivacyFilter.mask(text)

@@ -47,6 +47,7 @@ Sub-pages keep a small history in MainActivity, so Back returns to whichever pag
 - **service**: thin. It only extracts text and forwards it.
 - **domain**: pure Kotlin, unit tested without Android.
 - **data**: Room (SQLite) + CaptureRepository, the single door for real and simulated notifications.
+- **Encrypted storage** (data/DatabaseEncryption.kt): Room opens the database through `DatabaseHelperFactory`. On first use it finishes any interrupted swap, loads the Keystore-sealed key, converts a plain file, and opens the encrypted one. Any failure falls back to the plain file, and an encrypted file is never deleted. `DatabaseEngine` holds the parts that need the native library, so tests can fake them.
 - No dependency-injection library: PulseApp holds a PulseGraph with the database and repository.
 
 Simulated notifications use the same CaptureRepository path, so the demo exercises the real rules.

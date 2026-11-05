@@ -12,8 +12,10 @@ robolectric = "4.14.1"
 roborazzi = "1.43.0"
 androidxTestCore = "1.6.1"
 work = "2.10.1"
+sqlcipher = "4.19.1"
 
 [libraries]
+sqlcipher-android = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipher" }
 androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version.ref = "roborazzi" }

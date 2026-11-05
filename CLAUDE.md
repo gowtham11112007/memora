@@ -13,6 +13,8 @@ Target device: Nothing Phone (3a), Android 16. minSdk 26, targetSdk 35, package 
 - Keep code minimal. Every regex change needs a unit test with a real sample message.
 - Keep only money, reminder, to-do and useful note messages, from allowed apps. SMS and chat apps need a bank alert before anything counts as money. Everyday chat matches no rule and is dropped.
 - The notifications-read log holds the sender, outcome and what was saved for 7 days, never a message that had nothing useful.
+- The real database opens only through DatabaseHelperFactory (SQLCipher, Keystore-sealed key). On failure, fall back to the plain file. Never delete an encrypted file or replace a saved key. The UI claims encryption only from graph.isDatabaseEncrypted(), which reads the file.
+- SQLCipher's native library can't run on the Mac, so DatabaseEncryptionTest fakes it. Real encryption can only be confirmed on a device.
 - Don't run `adb shell dumpsys notification` on the Nothing 3a: it drops the debugging connection.
 
 ## Structure (app/src/main/java/com/pulse/app)

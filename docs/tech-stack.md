@@ -13,7 +13,7 @@ For the full data flow see [architecture.md](architecture.md). This file is the 
 | Language | Kotlin 2.1.21 |
 | UI | Jetpack Compose with Material 3 (Compose BOM 2025.05.01), Material icons core |
 | State | ViewModel + StateFlow, Room `Flow` observed by screens (lifecycle 2.9.0) |
-| Local database | Room 2.7.1 (SQLite), code generated with KSP |
+| Local database | Room 2.7.1 (SQLite), code generated with KSP, encrypted with SQLCipher 4.19.1 |
 | Async | Kotlin coroutines |
 | Dependency wiring | By hand: `PulseApp` holds a `PulseGraph` with the database and repository. No DI library. |
 | Notification capture | Android `NotificationListenerService` (`PulseNotificationListener`) |

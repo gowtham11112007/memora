@@ -205,7 +205,7 @@ class ScreensScreenshotTest {
     }
 
     @Test fun settingsLight() = shot("settings_light") {
-        PulseShell(Route.SETTINGS, {}) { SettingsContent(SettingsUiState(42, 11, 9, 3), true, false, {}, {}, {}) }
+        PulseShell(Route.SETTINGS, {}) { SettingsContent(SettingsUiState(42, 11, 9, 3, encrypted = true), true, false, {}, {}, {}) }
     }
 
     @Config(qualifiers = "w412dp-h1320dp-xxhdpi")

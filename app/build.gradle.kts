@@ -16,8 +16,11 @@ android {
         applicationId = "com.pulse.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.8.0"
+        versionCode = 9
+        versionName = "0.9.0"
+        // The encryption library is native code. These two cover phones and tablets, and leaving out the
+        // other two keeps about 4 MB out of the APK.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         // The key lives in secrets.properties, which Git ignores, so it's in the APK but never in the repo.
         val secrets = Properties()
         rootProject.file("secrets.properties").takeIf { it.exists() }?.inputStream()?.use { secrets.load(it) }
@@ -90,6 +93,9 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+
+    // Encrypts the database file. Android has no built-in way to do this for SQLite.
+    implementation(libs.sqlcipher.android)
 
     // Runs reminders at the right time, even if the app was closed or the phone restarted.
     implementation(libs.androidx.work.runtime)

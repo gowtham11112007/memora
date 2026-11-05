@@ -1,5 +1,7 @@
 # Data model (Room, database version 8)
 
+The database file is encrypted with SQLCipher. The tables below are unchanged by that. See [privacy.md](privacy.md).
+
 `MIGRATION_7_8` adds `chat_turn`: `id`, `conversation` (indexed), `question`, `answer`, `source`, `notes`, `at` (indexed). Saved chats, kept until deleted, up to 500 turns.
 
 `MIGRATION_6_7` adds `task.origin`, `todo.origin` and `activity.detail`: who a suggestion came from, and what a notification became.

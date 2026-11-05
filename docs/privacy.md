@@ -38,7 +38,18 @@
 - Deleted after 7 days, and by "Delete my data".
 
 ## App lock
-Off by default. When on, Memora asks for a fingerprint, or the phone's PIN, when opened and again after more than a minute away. Turning it on or off needs the fingerprint too. It also hides the app in recent apps and blocks screenshots. It guards the screens only: the stored database still isn't encrypted. It needs a screen lock on the phone, and if that lock is later removed, the app stops asking so the user isn't locked out.
+Off by default. When on, Memora asks for a fingerprint, or the phone's PIN, when opened and again after more than a minute away. Turning it on or off needs the fingerprint too. It also hides the app in recent apps and blocks screenshots. It guards the screens only. Encrypted storage, below, is separate and doesn't depend on it. It needs a screen lock on the phone, and if that lock is later removed, the app stops asking so the user isn't locked out.
+
+## Encrypted storage
+Everything in the database is encrypted with SQLCipher (AES-256): records, reminders, to-dos, notes, chats, the notifications-read list and the demo data. Settings → Privacy says "Encrypted on this phone", and that's read from the file itself, so it can't claim encryption that didn't happen.
+
+- **The key:** 32 random bytes per install, sealed by a key that Android Keystore holds and never releases. It doesn't need a fingerprint, because Memora saves notifications in the background while the phone is locked.
+- **Updating from an older version:** Memora writes an encrypted copy, reopens it with the key, compares its version and row counts with the original, and swaps it in. The plain file is deleted once the encrypted one has opened. If any step fails, Memora keeps using the plain file and tries again at the next start. A failure never deletes an encrypted file or replaces a saved key.
+- **What this protects against:** a copy of the database file being read somewhere else, for example from a rooted phone.
+- **What it doesn't protect against:** someone using the unlocked app (that's what App lock is for), or code running as Memora on a rooted phone, which can ask Keystore to unseal the key.
+- **Not encrypted:** balance, budget and settings, including any AI key the user types. These live in private app settings. Anything sent to the AI services or by email leaves as described above.
+- **A deleted plain file:** flash storage can't promise its bytes are wiped straight away, though the phone's own storage encryption still covers them.
+- **Moving phones:** the key can't leave the phone and backups are off, so the encrypted database can't be restored elsewhere. CSV export still works.
 
 ## Automatic reminders
 Off by default. When on, a clear date from a non-chat app is set without asking, and the popup offers Undo. Chats and unclear dates still ask.
@@ -47,4 +58,3 @@ Off by default. When on, a clear date from a non-chat app is set without asking,
 - `allowBackup=false`, so Android cloud backup never copies the database.
 - Notification access is a system permission the user grants in Android settings; Memora can only open that screen.
 - Android 15 may hide some one-time-code notification content from listeners; that is fine, we drop those anyway.
-- Encryption at rest arrives in milestone 6.

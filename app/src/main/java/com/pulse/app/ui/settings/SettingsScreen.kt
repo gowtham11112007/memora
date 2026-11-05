@@ -82,6 +82,7 @@ data class SettingsUiState(
     val income: Int = 0,
     val blocked: Int = 0,
     val allowedApps: Int = 0,
+    val encrypted: Boolean = false,
 )
 
 class SettingsViewModel(private val graph: PulseGraph) : ViewModel() {
@@ -97,6 +98,7 @@ class SettingsViewModel(private val graph: PulseGraph) : ViewModel() {
             income = records.count { it.type == RecordType.INCOME },
             blocked = blocked,
             allowedApps = permissions.count { it.allowed },
+            encrypted = graph.isDatabaseEncrypted(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -252,7 +254,7 @@ fun SettingsContent(
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ControlTile("Privacy", "What stays on this phone", scheme.secondaryContainer, scheme.onSecondaryContainer, Modifier.weight(1f)) { showPrivacy = true }
+                    ControlTile("Privacy", if (state.encrypted) "Encrypted on this phone" else "What stays on this phone", scheme.secondaryContainer, scheme.onSecondaryContainer, Modifier.weight(1f)) { showPrivacy = true }
                     ControlTile(
                         if (demoOn) "Delete sample data" else "Delete my data",
                         "Remove everything",
@@ -360,7 +362,11 @@ fun SettingsContent(
                         "• Your chats are saved on this phone until you delete them. Notes and earlier chats that help with a question are sent with it. You can turn this off in AI and email.\n" +
                         "• Codes, passwords, bank alerts and muted people are never sent to them.\n" +
                         "• If you turn on email, weekly totals are sent through Resend. They name no merchants or messages.\n" +
-                        "• The database is not encrypted yet. App lock guards the screens, not the stored file.",
+                        if (state.encrypted) {
+                            "• Your records, notes, reminders and chats are encrypted on this phone. Your balance, budget and settings are kept separately and are not. App lock guards the screens."
+                        } else {
+                            "• Your saved data isn't encrypted on this phone right now. Memora tries again each time it starts. App lock guards the screens, not the stored file."
+                        },
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                 )
             },

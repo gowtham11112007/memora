@@ -39,5 +39,5 @@ Turn Demo mode off afterwards. While it's on, new real payments go into the samp
 ## Questions judges may ask
 - **Why not use AI for everything?** Rules are free, instant, private and testable. AI is only for what rules can't do.
 - **How accurate is it?** Quote only the score measured on real messages. See `app/src/test/resources/labelled_messages.tsv`.
-- **Is the data encrypted?** Not yet. It's the next step, along with an app lock.
+- **Is the data encrypted?** Yes, if Settings → Privacy says "Encrypted on this phone", so check that first. The database uses SQLCipher with a key protected by Android Keystore. Balance, budget and settings aren't encrypted.
 - **Can it miss payments?** Yes. Some apps don't notify when you pay, so Memora also reads bank SMS, and you can add records by hand.

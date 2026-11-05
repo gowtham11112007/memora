@@ -19,6 +19,7 @@
 - **AI reads Second Brain:** chat answers from notes chosen for each question, with a switch. Worked live from the Mac against the real services, but not yet on a phone.
 - **Chat history:** chats are saved on the phone, with new chat, reopen, search, delete and undo, and the AI can use earlier chats. Tested on the Mac only.
 - **Fingerprint App lock:** uses Android's own prompt with the PIN as a fallback. It can only be tried on a real phone, and hasn't been yet.
+- **Encrypted database (0.9.0):** SQLCipher with a Keystore-sealed key. Existing data converts once on update, and Settings → Privacy shows the real state, read from the file. The conversion SQL ran on real SQLCipher 4.20 on the Mac with Memora's real schema and a leftover write-ahead log, and everything else around it is tested with a fake engine. The library itself only runs on Android, so it hasn't run yet.
 - **Sent money:** bank alerts are no longer thrown away because of a safety note or advert at the end, and more wordings are read. Tested with written samples, not the user's real SMS.
 - **Allowed apps:** redesigned, with a pinned search box and filters.
 - **Part of milestone 6:** delete all data, pause reading, CSV export and a privacy summary.
@@ -37,6 +38,7 @@ reminders, and it no longer stores any message without money or a date.
 - Gemini from inside the app. The request format was tested live from the Mac once, and the app code against a local server that copies that format.
 - Resend for real. It is tested only against a local server, because it needs the user's key.
 - The reminder popup and its Yes/No buttons on a real phone.
+- The encrypted database on any Android device: the library loading, Android Keystore, the wrapper's own calls, and converting real data on update. If any of these fail, Memora should stay on the plain file, and Settings → Privacy should not say "Encrypted on this phone".
 - App lock's unlock prompt, and exact alarms firing on time with the phone idle. Setting the alarm is tested, firing is not.
 - All notification buttons on a real phone. Their logic is tested, but tapping them and a repeat rescheduling from inside its own background job are not.
 - Real WhatsApp, Telegram and Instagram notifications: what they put in the title, and whether one message posts more than once, which would add extra lines to the bell page.
@@ -54,7 +56,10 @@ reminders, and it no longer stores any message without money or a date.
 - Star and mute match the name in the notification, not a phone number or contact.
 - Exact alarms are lost on restart, so a reminder due then comes from the backup job and may be a little late. Aggressive battery settings can also hold alerts back. Force-stopping the app stops both.
 - The new date words (assignment, viva, quiz and others) are tested only with written samples, not real messages.
-- Not built: pause reading, retention setting, biometric lock, encrypted database, FTS5 search.
+- Balance, budget and settings, including typed AI keys, are in private app settings and aren't encrypted.
+- Android won't install an older version over this one. Going back to 0.8.0 means uninstalling, which deletes all data.
+- If a phone's Keystore ever permanently lost the key, the encrypted database couldn't be opened and the app would crash until its data is cleared. The file is kept on purpose. This hasn't been seen, only reasoned about.
+- Not built: retention setting, FTS5 search.
 
 ## Next
 Test on the phone, then finish milestones 6 and 7.

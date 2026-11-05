@@ -6,6 +6,8 @@ import androidx.room.Room
 import com.pulse.app.data.AiRouter
 import com.pulse.app.data.AiSettings
 import com.pulse.app.data.CaptureRepository
+import com.pulse.app.data.DatabaseHelperFactory
+import com.pulse.app.data.DbFile
 import com.pulse.app.data.DemoData
 import com.pulse.app.data.MIGRATION_1_2
 import com.pulse.app.data.MIGRATION_2_3
@@ -17,6 +19,7 @@ import com.pulse.app.data.MIGRATION_7_8
 import com.pulse.app.data.MoneyPrefs
 import com.pulse.app.data.PulseDatabase
 import com.pulse.app.data.SmartReader
+import com.pulse.app.data.SqlCipherEngine
 import com.pulse.app.service.BudgetAlert
 import com.pulse.app.service.ReminderPrompt
 import com.pulse.app.service.ReminderScheduler
@@ -29,10 +32,15 @@ import kotlinx.coroutines.launch
  * Demo mode uses its own database and money settings, so real data is never mixed in or changed.
  */
 class PulseGraph(val appContext: Context, val demo: Boolean = false) {
+    private val dbName = if (demo) "pulse-demo.db" else "pulse.db"
     val db: PulseDatabase =
-        Room.databaseBuilder(appContext, PulseDatabase::class.java, if (demo) "pulse-demo.db" else "pulse.db")
+        Room.databaseBuilder(appContext, PulseDatabase::class.java, dbName)
             .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .openHelperFactory(DatabaseHelperFactory(SqlCipherEngine(appContext)))
             .build()
+
+    /** Read from the file itself, so Settings can never claim encryption that didn't happen. */
+    fun isDatabaseEncrypted() = DbFile.isEncrypted(appContext.getDatabasePath(dbName))
     val aiSettings = AiSettings(appContext)
     val ai = AiRouter(aiSettings)
     val moneyPrefs = MoneyPrefs(appContext, demo)

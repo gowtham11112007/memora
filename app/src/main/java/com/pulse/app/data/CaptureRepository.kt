@@ -28,6 +28,8 @@ val MESSAGING_PACKAGES = setOf(
     "com.google.android.apps.messaging",
     "com.samsung.android.messaging",
     "com.android.mms",
+    "com.truecaller",
+    "com.microsoft.android.smsorganizer",
 )
 
 /** Chat apps. A friend saying "I paid 500" isn't your expense, so money needs a real bank alert. */

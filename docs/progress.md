@@ -13,7 +13,9 @@
 - **People and automation:** star and mute contacts in chat and SMS apps, bell page showing what was read and what happened, to-do list, repeating reminders, Done / In 10 min / Tomorrow on reminder alerts, predicted to-dos with buttons on the popup, optional automatic reminders, app search on the allowed-apps page, chat commands for to-dos. Tested on the Mac only.
 - **Version 0.2.0:** exact-alarm reminders with a backup job, needs-your-answer card and list, new-items count on the bell, optional App lock, more student and meet-up date words, APK named `Memora.apk`. Tested on the Mac only.
 - **Payment accuracy:** one payment reported by SMS and several apps counts once, using the bank reference, time and name. Sender names read from more wordings, including a name alone in the title. The balance form opens with saved values and changes only what was edited. Category circles removed from Home. Tested on the Mac only, with written samples.
-- **Smart reading:** optional Gemini reading of messages from allowed apps, off by default. Tested against a local server and fake replies. It has not run against the real Gemini API or on a phone.
+- **Smart reading and Memora AI:** Gemini reads messages from allowed apps and answers chat in short replies, using a key built from the gitignored `secrets.properties`. On by default, with a switch. The request and reply format worked live from the Mac. It has not run on a phone.
+- **Sent money:** bank alerts are no longer thrown away because of a safety note or advert at the end, and more wordings are read. Tested with written samples, not the user's real SMS.
+- **Allowed apps:** redesigned, with a pinned search box and filters.
 - **Part of milestone 6:** delete all data, pause reading, CSV export and a privacy summary.
 - **Interface:** redesigned from the best parts of all references (see design.md), with page transitions and motion. Notification reading and AI assistant have their own pages in Settings.
 

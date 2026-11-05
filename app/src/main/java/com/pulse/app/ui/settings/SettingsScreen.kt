@@ -236,7 +236,7 @@ fun SettingsContent(
                     ControlTile("Notification reading", readingNote, Lime, Ink, Modifier.weight(1f), onOpenReading)
                     ControlTile(
                         "AI and email",
-                        if (aiConnected) "Gemini connected" else "Add your free keys",
+                        "Smart reading and summaries",
                         scheme.inverseSurface,
                         scheme.inverseOnSurface,
                         Modifier.weight(1f),
@@ -341,15 +341,15 @@ fun SettingsContent(
             title = { Text("Your privacy") },
             text = {
                 Text(
-                    "• Notifications and records stay on this phone, unless you turn on Smart reading.\n" +
+                    "• Your records stay on this phone. While Smart reading is on, messages from apps you allow are sent to Google's AI service. You can turn it off in AI and email.\n" +
                         "• Only apps you turn on are read.\n" +
                         "• OTPs, passwords, CVVs and PINs are dropped before anything is saved.\n" +
                         "• Long reference numbers are masked.\n" +
                         "• Message text is deleted after 24 hours.\n" +
                         "• Short lines from useful messages stay in Second Brain until you delete them. This includes useful lines from chats you allow, and longer messages from people you star.\n" +
                         "• The notifications-read list keeps sender names, never messages, for 7 days.\n" +
-                        "• If you add a Gemini key, general questions you type are sent to Google. Free-tier data may be used to improve Google's products, so don't type private details.\n" +
-                        "• If you turn on Smart reading, messages from apps you allow go to Google too. Codes, passwords, bank alerts and muted people are never sent.\n" +
+                        "• General questions you type are sent to Google's AI service too. Free-tier data may be used to improve Google's products, so don't type private details.\n" +
+                        "• Codes, passwords, bank alerts and muted people are never sent to it.\n" +
                         "• If you turn on email, weekly totals are sent through Resend. They name no merchants or messages.\n" +
                         "• The database is not encrypted yet. App lock guards the screens, not the stored file.",
                 )

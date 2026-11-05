@@ -56,7 +56,8 @@ fun AiScreen(onBack: () -> Unit) {
     var aiStatus by remember { mutableStateOf<String?>(null) }
     var emailStatus by remember { mutableStateOf<String?>(null) }
     AiContent(
-        initialAi = remember { settings.load() },
+        initialAi = remember { settings.loadTyped() },
+        builtInKey = settings.hasBuiltInKey(),
         initialEmail = remember { settings.loadEmail() },
         aiStatus = aiStatus,
         emailStatus = emailStatus,
@@ -69,7 +70,7 @@ fun AiScreen(onBack: () -> Unit) {
                     GeminiClient(config.apiKey).chat("Reply briefly.", listOf(LlmMessage("user", "Reply with the single word OK.")))
                 }
                 aiStatus = when (result) {
-                    is LlmResult.Reply -> "Connected. Gemini answered."
+                    is LlmResult.Reply -> "Working. Your key answered."
                     is LlmResult.Failed -> result.reason
                 }
             }
@@ -105,7 +106,9 @@ fun AiContent(
     onSendEmail: (EmailConfig) -> Unit,
     smartOn: Boolean = false,
     onSmart: (Boolean) -> Unit = {},
+    builtInKey: Boolean = false,
 ) {
+    var showKey by remember { mutableStateOf(!builtInKey || initialAi.isSet) }
     var key by remember { mutableStateOf(initialAi.apiKey) }
     var share by remember { mutableStateOf(initialAi.shareTotals) }
     var smart by remember { mutableStateOf(smartOn) }
@@ -126,29 +129,14 @@ fun AiContent(
         ScreenHeader("AI and email", onBack)
         Surface(shape = MaterialTheme.shapes.large, color = Lime, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Gemini", style = MaterialTheme.typography.headlineMedium, color = Ink)
+                Text("Memora AI", style = MaterialTheme.typography.headlineMedium, color = Ink)
                 Text(
-                    "Answers general questions you type. Get a free key at aistudio.google.com. Notifications and records " +
-                        "stay on this phone, unless you turn on Smart reading below.",
+                    "Answers your questions in chat and understands messages from the apps you allow.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Ink.copy(alpha = 0.78f),
                 )
             }
         }
-        OutlinedTextField(
-            value = key,
-            onValueChange = { key = it },
-            label = { Text("Gemini API key") },
-            singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = { onSaveAi(ai) }, modifier = Modifier.weight(1f)) { Text("Save") }
-            TextButton(onClick = { onSaveAi(ai); onTestAi(ai) }, enabled = ai.isSet) { Text("Save and test") }
-        }
-        if (aiStatus != null) NoteCard(null, aiStatus)
         ToggleRow(
             "Share my monthly totals",
             "For advice about your money. Sends category totals only, never who you paid or any message.",
@@ -159,19 +147,36 @@ fun AiContent(
         }
         ToggleRow(
             "Smart reading",
-            if (ai.isSet) {
-                "Gemini reads messages from apps you allow, to understand them better. They go to Google, and free-tier data " +
-                    "may be used to improve Google's products, so private chats may be seen. Codes, passwords, bank alerts and " +
-                    "muted people are never sent."
+            if (ai.isSet || builtInKey) {
+                "Understands messages from apps you allow. They're sent to Google's AI service, and free-tier data may be used " +
+                    "to improve Google's products. Codes, passwords, bank alerts and muted people are never sent."
             } else {
-                "Add your Gemini key first. Gemini can then read messages from apps you allow, to understand them better."
+                "Add an AI key below first."
             },
-            smart && ai.isSet,
-            enabled = ai.isSet,
+            smart && (ai.isSet || builtInKey),
+            enabled = ai.isSet || builtInKey,
         ) {
             smart = it
             onSaveAi(ai)
             onSmart(it)
+        }
+        if (showKey) {
+            OutlinedTextField(
+                value = key,
+                onValueChange = { key = it },
+                label = { Text("Your own AI key") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = { onSaveAi(ai) }, modifier = Modifier.weight(1f)) { Text("Save") }
+                TextButton(onClick = { onSaveAi(ai); onTestAi(ai) }, enabled = ai.isSet) { Text("Save and test") }
+            }
+            if (aiStatus != null) NoteCard(null, aiStatus)
+        } else {
+            TextButton(onClick = { showKey = true }) { Text("Use my own AI key") }
         }
 
         Surface(

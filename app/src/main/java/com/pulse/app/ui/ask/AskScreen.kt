@@ -110,7 +110,8 @@ data class ChatTurn(
 
 private const val SYSTEM_PROMPT =
     "You are Memora, a helpful assistant inside a personal Android app used in India. " +
-        "Answer any question clearly and briefly, in plain text without markdown. " +
+        "Answer any question directly in one or two short sentences, in plain text without markdown. Give more only if asked. " +
+        "Don't bring up which company or model powers you. If the user asks, say you are Memora's assistant, running on Google's AI. " +
         "You cannot see the user's records unless they are given in this message, so never invent their amounts or dates."
 
 /** The conversation lives in memory only and disappears when the app closes. */
@@ -164,7 +165,7 @@ class AskViewModel(private val graph: PulseGraph) : ViewModel() {
             if (!config.isSet) {
                 finish(
                     id,
-                    AskAnswer("I can't answer that offline. Add your free Gemini key in Settings → AI and email, and I can answer general questions too."),
+                    AskAnswer("I can't answer that one yet. Ask me about your money, reminders or notes."),
                     AnswerFrom.NOTICE,
                 )
                 return@launch
@@ -309,20 +310,10 @@ fun AskContent(turns: List<ChatTurn>, aiConnected: Boolean, onAsk: (String) -> U
 private fun Greeting(aiConnected: Boolean, onOpenAi: () -> Unit, modifier: Modifier) {
     Surface(shape = MaterialTheme.shapes.large, color = Lime, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(
-                    Modifier
-                        .size(9.dp)
-                        .clip(CircleShape)
-                        .background(if (aiConnected) Ink else Ink.copy(alpha = 0.28f)),
-                )
-                Text(
-                    if (aiConnected) "Gemini connected" else "Offline answers only",
-                    Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Ink,
-                )
-                if (!aiConnected) {
+            if (!aiConnected) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(Modifier.size(9.dp).clip(CircleShape).background(Ink.copy(alpha = 0.28f)))
+                    Text("Offline answers only", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = Ink)
                     Row(
                         Modifier
                             .bounceClick(onClick = onOpenAi)
@@ -427,7 +418,7 @@ private fun AnswerCard(answer: AskAnswer, from: AnswerFrom) {
                 ) {
                     Text(
                         when (from) {
-                            AnswerFrom.AI -> "Gemini"
+                            AnswerFrom.AI -> "Memora AI"
                             AnswerFrom.OFFLINE -> "Built in"
                             else -> "On your phone"
                         },

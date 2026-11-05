@@ -101,6 +101,39 @@ class ExpenseExtractorTest {
     }
 
     @Test
+    fun `reads money sent even when the bank adds a safety note or an advert`() {
+        fun read(text: String) = ExpenseExtractor.extract("AD-BANK", text, titleMayBePerson = false)
+        listOf(
+            "Rs.100.00 debited from A/c XX1234 to Rahul on 05-11-26. Ref 612345678901. If not requested by you, call 18001234",
+            "Your a/c XX1234 is debited for Rs.100.00 on 05-11-26. Not you? SMS BLOCK to 9000000000",
+            "Rs 100 debited from a/c XX1234 for UPI txn. Get a pre-approved loan today, apply now!",
+            "UPI Debit: Rs:100.00 from A/c XX1234 to Rahul on 05-11-26. Ref 612345678901",
+            "INR : 100 debited from your account XX1234. T&C apply",
+            "Debit Alert! Rupees 100 sent from A/c XX1234 to Rahul. To report fraud, call 1800",
+        ).forEach { message ->
+            assertEquals(message, 10000L, read(message)?.amountPaise)
+            assertEquals(message, EXPENSE, read(message)?.type)
+        }
+        assertEquals(10000L, ExpenseExtractor.extract("Google Pay", "You sent 100 to Rahul")?.amountPaise)
+    }
+
+    @Test
+    fun `adverts and future debits still aren't money, even from a bank`() {
+        listOf(
+            "Rs 999 will be debited from your A/c XX1 on 3 Feb",
+            "Get Rs 100 credited to your account on your first UPI payment!",
+            "Your payment of Rs 100 from A/c XX1 failed. Amount will not be debited",
+            "Pre-approved loan of Rs 2,00,000 for your account. Apply now",
+        ).forEach { assertNull(it, ExpenseExtractor.extract("AD-BANK", it, titleMayBePerson = false)) }
+    }
+
+    @Test
+    fun `a credit or debit card isn't a direction`() {
+        assertEquals(EXPENSE, ExpenseExtractor.extract(null, "Your Credit Card XX12 was used for Rs 500 at Amazon")?.type)
+        assertEquals(INCOME, ExpenseExtractor.extract(null, "Credit Alert: Rs 500 to A/c XX12 from Rahul")?.type)
+    }
+
+    @Test
     fun `reads who sent or received the money in every common wording`() {
         fun name(title: String?, text: String, person: Boolean = true) = ExpenseExtractor.extract(title, text, person)?.merchant
         assertEquals("Rahul Kumar", name("Rahul Kumar", "Paid you ₹500"))

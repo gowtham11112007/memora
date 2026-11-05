@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,12 +17,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -61,6 +66,7 @@ import com.pulse.app.data.CHAT_PACKAGES
 import com.pulse.app.data.MESSAGING_PACKAGES
 import com.pulse.app.domain.CaptureDecision
 import com.pulse.app.ui.components.AppIcon
+import com.pulse.app.ui.components.FilterPills
 import com.pulse.app.ui.components.NoteCard
 import com.pulse.app.ui.components.ScreenHeader
 import com.pulse.app.ui.components.SectionLabel
@@ -224,7 +230,17 @@ fun ReadingScreen(snackbar: SnackbarHostState, onBack: () -> Unit) {
     )
 }
 
+private enum class AppFilter(val label: String) {
+    ALL("All"),
+    ALLOWED("Allowed"),
+    MONEY("Money"),
+    CHATS("Chats"),
+}
+
+private data class AppSection(val title: String, val hint: String?, val rows: List<AppRow>)
+
 /** Plain data in, callbacks out. No database, so tests can render it directly. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ReadingContent(
     state: ReadingUiState,
@@ -238,195 +254,187 @@ fun ReadingContent(
     paused: Boolean = false,
     onPause: (Boolean) -> Unit = {},
 ) {
-    var showAll by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
+    var filter by rememberSaveable { mutableStateOf(AppFilter.ALL) }
     val searching = query.isNotBlank()
-    val visibleOthers = state.others.filter { showAll || it.allowed }
-    val hiddenCount = state.others.size - visibleOthers.size
-    val found = (state.sources + state.chats + state.others)
-        .filter { it.app.label.contains(query.trim(), ignoreCase = true) }
-        .sortedBy { it.app.label.lowercase() }
+    val all = state.sources + state.chats + state.others
+    val matches = { row: AppRow -> row.app.label.contains(query.trim(), ignoreCase = true) }
+    val moneyHint = "To catch money you send, turn on your SMS app. Payment apps often notify only when you receive money."
+    val sections = when {
+        filter == AppFilter.ALLOWED -> listOf(AppSection("Allowed", null, all.filter { it.allowed }.sortedBy { it.app.label.lowercase() }))
+        filter == AppFilter.MONEY -> listOf(AppSection("Money", moneyHint, state.sources))
+        filter == AppFilter.CHATS -> listOf(AppSection("Chats", null, state.chats))
+        searching -> listOf(AppSection("Results", null, all.sortedBy { it.app.label.lowercase() }))
+        else -> listOf(
+            AppSection("Money", moneyHint, state.sources),
+            AppSection("Chats", "For reminders, notes and to-dos. Only bank alerts count as money.", state.chats),
+            AppSection("All apps", null, state.others),
+        )
+    }.map { it.copy(rows = it.rows.filter(matches)) }.filter { it.rows.isNotEmpty() }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize().statusBarsPadding(),
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item { ScreenHeader("Notification reading", onBack) }
-        item { StatusCard(accessOn, paused, onOpenAccess, Modifier.padding(top = 6.dp).riseIn(0)) }
-        item(key = "search") {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = { Text("Search your apps") },
-                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (searching) {
-                        IconButton(onClick = { query = "" }) { Icon(Icons.Rounded.Close, contentDescription = "Clear search") }
-                    }
-                },
-                singleLine = true,
-                shape = MaterialTheme.shapes.medium,
-                modifier = Modifier.fillMaxWidth().riseIn(1),
-            )
+        item { ScreenHeader("Allowed apps", onBack) }
+        item {
+            StatusRow(accessOn, paused, all.count { it.allowed }, all.size, onOpenAccess, Modifier.padding(top = 14.dp).riseIn(0))
         }
-        if (!searching) {
-            item {
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.fillMaxWidth().riseIn(1),
-                ) {
-                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Pause reading", style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                "Nothing is read while this is on.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+        stickyHeader(key = "search") {
+            Column(
+                Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = { Text("Search apps") },
+                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (searching) {
+                            IconButton(onClick = { query = "" }) { Icon(Icons.Rounded.Close, contentDescription = "Clear search") }
                         }
-                        Switch(checked = paused, onCheckedChange = onPause, modifier = Modifier.labelled("Pause reading"))
-                    }
-                }
-            }
-            item {
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.fillMaxWidth().riseIn(1),
-                ) {
-                    Row(Modifier.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Keep Memora running", style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                "In App info, set battery use to Unrestricted",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        OutlinedButton(onClick = onOpenBattery) { Text("Open") }
-                    }
-                }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                FilterPills(AppFilter.entries.map { it to it.label }, filter, { filter = it })
             }
         }
-        if (state.loading) {
-            item { Text("Loading apps…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        } else if (searching) {
-            if (found.isEmpty()) {
-                item { NoteCard(null, "No app called \"${query.trim()}\" is installed.") }
-            } else {
-                items(found, key = { "f-" + it.app.pkg }) { AppToggleRow(it, onToggle) }
-            }
-        } else {
-            item { SectionLabel("Money sources", Modifier.padding(top = 8.dp, bottom = 2.dp)) }
-            item {
+        when {
+            state.loading -> item { Text("Loading apps…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            sections.isEmpty() -> item {
                 NoteCard(
                     null,
-                    "Payment apps usually notify you only when you receive money. To catch money you send, turn on your " +
-                        "SMS app, so Memora can read the bank's message. Only bank alerts count as money.",
+                    when {
+                        searching -> "No app called \"${query.trim()}\" is installed."
+                        filter == AppFilter.ALLOWED -> "No apps allowed yet. Turn one on to start."
+                        else -> "None of your apps fit here."
+                    },
                 )
             }
-            items(state.sources, key = { "s-" + it.app.pkg }) { AppToggleRow(it, onToggle) }
-            if (state.chats.isNotEmpty()) {
-                item { SectionLabel("Chats", Modifier.padding(top = 8.dp, bottom = 2.dp)) }
-                item {
-                    NoteCard(
-                        null,
-                        "Memora offers a reminder or to-do when a message needs one, and asks you first. Useful messages, " +
-                            "like deliveries and exams, are saved as short notes. Everyday chat isn't. Mute anyone from the bell on Home.",
-                    )
-                }
-                items(state.chats, key = { "c-" + it.app.pkg }) { AppToggleRow(it, onToggle) }
-            }
-            if (visibleOthers.isNotEmpty()) {
-                item { SectionLabel("Other apps", Modifier.padding(top = 8.dp, bottom = 2.dp)) }
-                items(visibleOthers, key = { "o-" + it.app.pkg }) { AppToggleRow(it, onToggle) }
-            }
-            if (hiddenCount > 0 || showAll) {
-                item {
-                    TextButton(onClick = { showAll = !showAll }, modifier = Modifier.fillMaxWidth()) {
-                        Text(if (showAll) "Show fewer apps" else "Show all apps ($hiddenCount more)")
+            else -> sections.forEach { section ->
+                item(key = "t-" + section.title) {
+                    Column(Modifier.padding(top = 10.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        SectionLabel(section.title)
+                        section.hint?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
+                }
+                itemsIndexed(section.rows, key = { _, row -> section.title + "-" + row.app.pkg }) { index, row ->
+                    AppToggleRow(row, index == 0, index == section.rows.lastIndex, onToggle)
                 }
             }
         }
-        if (!searching) item { DemoCard(onPayment, onOtp) }
+        if (!searching && filter == AppFilter.ALL) {
+            item { SectionLabel("Options", Modifier.padding(top = 18.dp, bottom = 8.dp)) }
+            item {
+                Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Pause reading", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "Nothing is read while this is on.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(checked = paused, onCheckedChange = onPause, modifier = Modifier.labelled("Pause reading"))
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                        Row(Modifier.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Keep Memora running", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "In App info, set battery use to Unrestricted.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            OutlinedButton(onClick = onOpenBattery) { Text("Open") }
+                        }
+                    }
+                }
+            }
+            item { DemoCard(onPayment, onOtp) }
+        }
     }
 }
 
+/** One calm line, and a button only when something needs doing. */
 @Composable
-private fun StatusCard(accessOn: Boolean, paused: Boolean, onOpenAccess: () -> Unit, modifier: Modifier) {
+private fun StatusRow(accessOn: Boolean, paused: Boolean, allowed: Int, total: Int, onOpenAccess: () -> Unit, modifier: Modifier) {
     val scheme = MaterialTheme.colorScheme
     val working = accessOn && !paused
     val fill = if (working) scheme.tertiaryContainer else scheme.errorContainer
     val ink = if (working) scheme.onTertiaryContainer else scheme.onErrorContainer
-    Surface(shape = MaterialTheme.shapes.large, color = fill, modifier = modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Status", style = MaterialTheme.typography.bodyMedium, color = ink.copy(alpha = 0.72f))
-            Text(
-                when {
-                    !accessOn -> "Reading is off"
-                    paused -> "Reading is paused"
-                    else -> "Reading is on"
-                },
-                style = MaterialTheme.typography.headlineMedium,
-                color = ink,
-            )
-            Text(
-                when {
-                    !accessOn -> "Android needs your permission before Memora can read any notification."
-                    paused -> "Memora is ignoring every notification until you turn this back on."
-                    else -> "Only money, reminders and useful updates are kept. Everything else is ignored."
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = ink.copy(alpha = 0.78f),
-            )
-            if (!accessOn) {
-                Box(Modifier.padding(top = 6.dp)) {
-                    Button(onClick = onOpenAccess, modifier = Modifier.fillMaxWidth()) { Text("Turn on notification reading") }
-                }
+    Surface(shape = MaterialTheme.shapes.medium, color = fill, modifier = modifier.fillMaxWidth()) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    when {
+                        !accessOn -> "Reading is off"
+                        paused -> "Reading is paused"
+                        else -> "Reading is on"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = ink,
+                )
+                Text(
+                    if (accessOn) "$allowed of $total apps allowed" else "Android needs your permission first.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ink.copy(alpha = 0.78f),
+                )
             }
+            if (!accessOn) Button(onClick = onOpenAccess) { Text("Turn on") }
         }
     }
 }
 
 @Composable
-private fun AppToggleRow(row: AppRow, onToggle: (AppItem, Boolean) -> Unit) {
-    val isSms = row.app.pkg in MESSAGING_PACKAGES
-    val seen = row.lastSeen?.let { "Last read ${formatCaptureTime(it)}" } ?: "Nothing read yet"
+private fun AppToggleRow(row: AppRow, first: Boolean, last: Boolean, onToggle: (AppItem, Boolean) -> Unit) {
+    val kind = when (row.app.pkg) {
+        in MESSAGING_PACKAGES -> "Bank SMS"
+        in CHAT_PACKAGES -> "Chats"
+        in SOURCE_PACKAGES -> "Payments"
+        else -> null
+    }
+    val seen = row.lastSeen?.let { "Read ${formatCaptureTime(it)}" }
+    val corner = 18.dp
     Surface(
-        shape = MaterialTheme.shapes.medium,
+        shape = RoundedCornerShape(
+            topStart = if (first) corner else 0.dp,
+            topEnd = if (first) corner else 0.dp,
+            bottomStart = if (last) corner else 0.dp,
+            bottomEnd = if (last) corner else 0.dp,
+        ),
         color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable { onToggle(row.app, !row.allowed) },
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            AppIcon(row.app.pkg)
-            Column(Modifier.weight(1f)) {
-                Text(
-                    row.app.label,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    when {
-                        isSms -> "Bank SMS for money you send. $seen"
-                        row.app.pkg in CHAT_PACKAGES -> "Reminders, notes and to-dos. $seen"
-                        else -> seen
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Column {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                AppIcon(row.app.pkg)
+                Column(Modifier.weight(1f)) {
+                    Text(row.app.label, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val note = listOfNotNull(kind, seen).joinToString(" · ")
+                    if (note.isNotEmpty()) {
+                        Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    }
+                }
+                Switch(
+                    checked = row.allowed,
+                    onCheckedChange = { onToggle(row.app, it) },
+                    modifier = Modifier.labelled("Read notifications from ${row.app.label}"),
                 )
             }
-            Switch(
-                checked = row.allowed,
-                onCheckedChange = { onToggle(row.app, it) },
-                modifier = Modifier.labelled("Read notifications from ${row.app.label}"),
-            )
+            if (!last) HorizontalDivider(Modifier.padding(start = 66.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
         }
     }
 }
@@ -436,10 +444,10 @@ private fun DemoCard(onPayment: () -> Unit, onOtp: () -> Unit) {
     Surface(
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
     ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Demo tools", style = MaterialTheme.typography.titleMedium)
+            Text("Try a sample", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Sends a sample message through the same path as a real notification.",
                 style = MaterialTheme.typography.bodyMedium,

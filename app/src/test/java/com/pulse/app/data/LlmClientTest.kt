@@ -123,14 +123,14 @@ class LlmClientTest {
     @Test
     fun `explains a wrong key without trying again`() {
         statuses += "403 Forbidden"
-        assertTrue((ask() as LlmResult.Failed).reason.contains("refused the key"))
+        assertTrue((ask() as LlmResult.Failed).reason.contains("can't answer"))
         assertEquals(1, paths.size)
     }
 
     @Test
     fun `explains a strange reply instead of crashing`() {
         reply = """{"candidates":[]}"""
-        assertTrue((ask() as LlmResult.Failed).reason.contains("empty answer"))
+        assertTrue((ask() as LlmResult.Failed).reason.contains("didn't get an answer"))
     }
 
     @Test

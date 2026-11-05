@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -254,14 +255,22 @@ class ScreensScreenshotTest {
         rule.onNodeWithContentDescription("See notifications read, 3 new").assertExists()
     }
 
-    @Test fun searchFindsAppsThatAreHiddenByDefault() {
-        val sources = listOf(AppRow(AppItem("c", "PhonePe"), false))
+    @Test fun searchAndFiltersFindApps() {
+        val sources = listOf(AppRow(AppItem("c", "PhonePe"), true))
         val others = listOf(AppRow(AppItem("d", "Gmail"), false))
         val chats = listOf(AppRow(AppItem("com.whatsapp", "WhatsApp"), false))
         rule.setContent {
             PulseTheme { ReadingContent(ReadingUiState(false, sources, others, chats), true, {}, {}, {}, { _, _ -> }, {}, {}) }
         }
+        rule.onNodeWithText("Gmail").assertExists()
+        rule.onNodeWithText("1 of 3 apps allowed").assertExists()
+
+        rule.onNodeWithText("Allowed").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("PhonePe").assertExists()
         rule.onNodeWithText("Gmail").assertDoesNotExist()
+        rule.onNodeWithText("All").performClick()
+        rule.waitForIdle()
 
         rule.onNode(hasSetTextAction()).performTextInput("gma")
         rule.waitForIdle()

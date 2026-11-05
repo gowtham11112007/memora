@@ -12,11 +12,29 @@ data class Extraction(val amountPaise: Long, val merchant: String?, val type: Re
 object ExpenseExtractor {
     private val ignoreCase = setOf(RegexOption.IGNORE_CASE)
 
-    // Promotions, failures and future events mention money, but no money moved.
-    private val notATransaction = Regex(
-        """\b(failed|declined|unsuccessful|cancelled|canceled|requested|request|reminder|due|overdue|will be|scheduled|upcoming|offer|win|won|get|claim|eligible|pre-?approved|loan|apply|hurry|voucher|coupon|pay now)\b""",
+    // No money moved, whatever else the message says.
+    private val failed = Regex("""\b(failed|declined|unsuccessful|cancelled|canceled)\b""", ignoreCase)
+
+    // Promotions and future events mention money too, but a real bank alert can carry these words in an advert.
+    private val promoOrFuture = Regex(
+        """\b(requested|request|reminder|due|overdue|will be|scheduled|upcoming|offer|win|won|get|claim|eligible|pre-?approved|loan|apply|hurry|voucher|coupon|pay now)\b""",
         ignoreCase,
     )
+    private val moneyMoved = Regex("""\b(debited|credited|withdrawn)\b""", ignoreCase)
+    private val notYet = Regex("""\b(will be|to be|shall be|get|claim|eligible)\b[^.]*\b(debited|credited)\b""", ignoreCase)
+
+    // Banks end alerts with "If not requested by you, call...". That advice isn't part of the transaction.
+    private val safetyFooter = Regex(
+        """\b(?:if\s+not|if\s+this\s+(?:is|was)\s+not|not\s+you|not\s+u\b|not\s+done\s+by|if\s+(?:you\s+)?(?:did|have)\s*(?:not|n't)|sms\s+block|to\s+block|to\s+report|to\s+dispute|for\s+dispute|report\s+(?:fraud|unauth)|t\s*&\s*c).*""",
+        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+    )
+
+    private fun isNotATransaction(message: String): Boolean {
+        if (failed.containsMatchIn(message)) return true
+        if (!promoOrFuture.containsMatchIn(message)) return false
+        val confirmed = moneyMoved.containsMatchIn(message) && looksLikeBankAlert(message) && !notYet.containsMatchIn(message)
+        return !confirmed
+    }
 
     // Removed first, so "Avl Bal Rs 10,000" is never mistaken for the transaction amount.
     private val balance = Regex(
@@ -24,11 +42,14 @@ object ExpenseExtractor {
         ignoreCase,
     )
 
-    private val amountAfterSymbol = Regex("""(?:₹|\brs\.?|\binr\.?)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)""", ignoreCase)
+    private val amountAfterSymbol = Regex("""(?:₹|\brs\.?|\binr\.?|\brupees\b)[\s:]*([0-9][0-9,]*(?:\.[0-9]{1,2})?)""", ignoreCase)
     private val amountBeforeWord = Regex("""\b([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:rs|inr|rupees)\b""", ignoreCase)
 
     // Some bank SMS have no currency symbol: "A/C X1234 debited by 20.0 on 01Jan26".
-    private val amountAfterVerb = Regex("""\b(?:debited|credited)\s+(?:by|for|with)\s+([0-9][0-9,]*(?:\.[0-9]{1,2})?)""", ignoreCase)
+    private val amountAfterVerb = Regex(
+        """\b(?:debited|credited)\s+(?:by|for|with|of)\s+([0-9][0-9,]*(?:\.[0-9]{1,2})?)|\b(?:paid|sent)\s+([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s+to\b""",
+        ignoreCase,
+    )
 
     // Used for SMS apps, so a chat like "I paid 500 rupees for lunch" never becomes a record.
     private val bankAlertWords = Regex("""\b(a/?c|acct|account|upi|card|bank|ref|refno|txn|debited|credited|neft|imps|rtgs)\b""", ignoreCase)
@@ -50,11 +71,11 @@ object ExpenseExtractor {
     }
 
     private val incomeWords = Regex(
-        """\b(paid you|sent you|(?:paid|sent)\s+(?:₹|rs\.?|inr\.?)\s*[\d,.]+\s+to\s+you|payment of [^.]*? received|received|credited|refund(?:ed)?|deposited|cashback)\b""",
+        """\b(paid you|sent you|(?:paid|sent)\s+(?:₹|rs\.?|inr\.?)\s*[\d,.]+\s+to\s+you|payment of [^.]*? received|received|credited|credit(?!\s*card)|refund(?:ed)?|deposited|cashback)\b""",
         ignoreCase,
     )
     private val expenseWords = Regex(
-        """\b(paid|sent|debited|spent|purchase|withdrawn|withdrawal|transferred|charged|payment (?:of|to|successful|done))\b""",
+        """\b(paid|sent|debited|debit(?!\s*card)|spent|used|purchase|withdrawn|withdrawal|transferred|charged|payment (?:of|to|successful|done))\b""",
         ignoreCase,
     )
 
@@ -113,8 +134,9 @@ object ExpenseExtractor {
         return if (best.merchant == null && titleIsName) best.copy(merchant = cleanTitle) else best
     }
 
-    private fun parse(message: String): Extraction? {
-        if (notATransaction.containsMatchIn(message)) return null
+    private fun parse(fullMessage: String): Extraction? {
+        val message = safetyFooter.replace(fullMessage, "")
+        if (isNotATransaction(message)) return null
         val cleaned = balance.replace(message, " ")
         val amount = findAmount(cleaned) ?: return null
         val type = findType(cleaned) ?: return null
@@ -128,7 +150,7 @@ object ExpenseExtractor {
 
     private fun findAmount(text: String): Long? {
         val match = amountAfterSymbol.find(text) ?: amountAfterVerb.find(text) ?: amountBeforeWord.find(text)
-        val raw = match?.groupValues?.get(1) ?: return null
+        val raw = match?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() } ?: return null
         val parts = raw.replace(",", "").split(".")
         val rupees = parts[0].toLongOrNull() ?: return null
         val paise = parts.getOrNull(1)?.padEnd(2, '0')?.toLongOrNull() ?: 0L

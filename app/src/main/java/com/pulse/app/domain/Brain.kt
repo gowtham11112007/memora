@@ -183,7 +183,7 @@ object OfflineAnswers {
     private val GREETINGS = setOf("hi", "hello", "hey", "good morning", "good evening", "good afternoon", "hii", "namaste")
     private const val HELP =
         "I'm Memora, your second brain. Ask about your spending or reminders, say \"remember that...\" or " +
-            "\"remind me to... tomorrow at 5 pm\", \"add... to my to-do\", or search your notes with \"find...\". With a Gemini key I can answer general questions too."
+            "\"remind me to... tomorrow at 5 pm\", \"add... to my to-do\", or search your notes with \"find...\". I can answer general questions too."
 }
 
 /** A small calculator: + - * / ^ and brackets. Null if the expression isn't valid. */

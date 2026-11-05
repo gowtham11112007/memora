@@ -1,6 +1,7 @@
 package com.pulse.app.data
 
 import android.content.Context
+import com.pulse.app.BuildConfig
 import com.pulse.app.domain.NoteKind
 import com.pulse.app.domain.PrivacyFilter
 import org.json.JSONArray
@@ -23,7 +24,13 @@ data class EmailConfig(val resendKey: String = "", val toAddress: String = "", v
 class AiSettings(context: Context) {
     private val prefs = context.getSharedPreferences("ai", Context.MODE_PRIVATE)
 
-    fun load() = AiConfig(prefs.getString("key", "").orEmpty(), prefs.getBoolean("totals", false))
+    /** The key to use: the user's own if they added one, otherwise the one built into this APK. */
+    fun load() = loadTyped().let { it.copy(apiKey = it.apiKey.ifBlank { BuildConfig.AI_KEY }) }
+
+    /** Only what the user typed, for the settings page. */
+    fun loadTyped() = AiConfig(prefs.getString("key", "").orEmpty(), prefs.getBoolean("totals", false))
+
+    fun hasBuiltInKey() = BuildConfig.AI_KEY.isNotBlank()
 
     fun save(config: AiConfig) {
         prefs.edit().putString("key", config.apiKey.trim()).putBoolean("totals", config.shareTotals).apply()
@@ -51,7 +58,7 @@ class AiSettings(context: Context) {
 
     fun setAutoReminders(on: Boolean) = prefs.edit().putBoolean("auto_reminders", on).apply()
 
-    fun isSmartReading(): Boolean = prefs.getBoolean("smart_reading", false)
+    fun isSmartReading(): Boolean = prefs.getBoolean("smart_reading", true)
 
     fun setSmartReading(on: Boolean) = prefs.edit().putBoolean("smart_reading", on).apply()
 
@@ -85,11 +92,11 @@ class GeminiClient(
             val (code, body) = try {
                 post(model, requestBody(system, messages))
             } catch (e: IOException) {
-                return LlmResult.Failed("I can't reach Gemini. Check your internet connection.")
+                return LlmResult.Failed("I can't reach the internet. Check your connection and try again.")
             }
             last = when (code) {
                 in 200..299 -> return parseReply(body)
-                400, 401, 403 -> return LlmResult.Failed("Gemini refused the key. Check it in Settings → AI and email.")
+                400, 401, 403 -> return LlmResult.Failed("I can't answer that right now. Try again later.")
                 else -> LlmResult.Failed(BUSY)
             }
         }
@@ -135,12 +142,12 @@ class GeminiClient(
                 .getJSONObject("content").getJSONArray("parts")
             (0 until parts.length()).joinToString("") { parts.getJSONObject(it).optString("text") }
         }.getOrNull()?.trim()
-        return if (text.isNullOrEmpty()) LlmResult.Failed("Gemini sent an empty answer. Try again.") else LlmResult.Reply(text)
+        return if (text.isNullOrEmpty()) LlmResult.Failed("I didn't get an answer. Try again.") else LlmResult.Reply(text)
     }
 
     private companion object {
         val MODELS = listOf("gemini-flash-latest", "gemini-flash-lite-latest")
-        const val BUSY = "Gemini is busy or out of free quota right now. Try again in a minute."
+        const val BUSY = "I'm busy right now. Try again in a minute."
     }
 }
 

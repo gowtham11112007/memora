@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -15,8 +16,12 @@ android {
         applicationId = "com.pulse.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
+        // The key lives in secrets.properties, which Git ignores, so it's in the APK but never in the repo.
+        val secrets = Properties()
+        rootProject.file("secrets.properties").takeIf { it.exists() }?.inputStream()?.use { secrets.load(it) }
+        buildConfigField("String", "AI_KEY", "\"${secrets.getProperty("GEMINI_API_KEY", "")}\"")
     }
 
     buildTypes {
@@ -39,6 +44,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     testOptions {
